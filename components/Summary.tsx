@@ -7,6 +7,7 @@ interface SummaryProps {
   projects: Project[];
   absences: Absence[];
   holidays: Set<string>;
+  publicHolidayAbsenceId: string | null;
 }
 
 interface ProjectSummary {
@@ -22,7 +23,7 @@ interface AbsenceSummary {
 }
 
 
-export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, projects, absences, holidays }) => {
+export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, projects, absences, holidays, publicHolidayAbsenceId }) => {
   const summaryData = useMemo(() => {
     const monthData = Object.values(workData).filter(
       (d: WorkDay) => {
@@ -41,7 +42,8 @@ export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, project
       totalHours += day.hours;
       totalOvertime += day.overtime;
 
-      if (day.absenceId && day.absenceAmount > 0) {
+      // Check for absence, but exclude public holidays from the count
+      if (day.absenceId && day.absenceAmount > 0 && day.absenceId !== publicHolidayAbsenceId) {
           const absence = absences.find(a => a.id === day.absenceId);
           if (absence) {
             const absenceHours = day.absenceAmount * 8;
@@ -93,7 +95,7 @@ export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, project
     const workTimeFund = workDaysCount * 8;
 
     return { totalHours, totalOvertime, projectSummaryData, totalAbsenceHours, absenceSummaryData, workTimeFund };
-  }, [workData, currentDate, projects, absences, holidays]);
+  }, [workData, currentDate, projects, absences, holidays, publicHolidayAbsenceId]);
 
 
   return (

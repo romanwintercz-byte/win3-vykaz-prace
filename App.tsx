@@ -355,7 +355,7 @@ const App: React.FC = () => {
           )}
         </main>
         
-        {activeEmployeeId && <Summary workData={activeWorkData} currentDate={currentDate} projects={projects} absences={absences} holidays={holidaysForYear.strings} />}
+        {activeEmployeeId && <Summary workData={activeWorkData} currentDate={currentDate} projects={projects} absences={absences} holidays={holidaysForYear.strings} publicHolidayAbsenceId={publicHolidayAbsenceId} />}
 
         {showReport && activeEmployee && (
           <Report 
