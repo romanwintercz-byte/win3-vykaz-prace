@@ -135,7 +135,7 @@ const App: React.FC = () => {
   const holidaysForYear = useMemo(() => {
     const year = currentDate.getFullYear();
     return getCzechPublicHolidays(year);
-  }, [currentDate.getFullYear()]);
+  }, [currentDate]);
 
   useEffect(() => {
     if (!publicHolidayAbsenceId || !activeEmployeeId) return;
@@ -355,7 +355,7 @@ const App: React.FC = () => {
           )}
         </main>
         
-        {activeEmployeeId && <Summary workData={activeWorkData} currentDate={currentDate} projects={projects} absences={absences} />}
+        {activeEmployeeId && <Summary workData={activeWorkData} currentDate={currentDate} projects={projects} absences={absences} holidays={holidaysForYear.strings} />}
 
         {showReport && activeEmployee && (
           <Report 
