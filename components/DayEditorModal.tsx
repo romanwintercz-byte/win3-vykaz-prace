@@ -78,11 +78,10 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
     onSaveAndCopy(formData);
   };
   
-  // Parse date string manually to avoid timezone issues with `new Date(string)`
+  // Parse date string as UTC to avoid timezone issues with `new Date(string)`
   const [year, month, day] = formData.date.split('-').map(Number);
-  // Create date using local time components
-  const selectedDate = new Date(year, month - 1, day);
-  const formattedDate = selectedDate.toLocaleDateString('cs-CZ', { weekday: 'long', day: 'numeric', month: 'long' });
+  const selectedDate = new Date(Date.UTC(year, month - 1, day));
+  const formattedDate = selectedDate.toLocaleDateString('cs-CZ', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
 
   // Stop propagation to prevent closing modal when clicking inside
   const handleModalContentClick = (e: React.MouseEvent) => {

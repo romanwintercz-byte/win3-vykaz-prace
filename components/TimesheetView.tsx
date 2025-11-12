@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { WorkDay, Project, Absence } from '../types';
 import { DayEditorModal } from './DayEditorModal';
 import { CopyDayModal } from './CopyDayModal';
@@ -13,8 +13,8 @@ interface DayRowProps {
 }
 
 const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHoliday, onClick }) => {
-    const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-    const formattedDate = day.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric' });
+    const isWeekend = day.getUTCDay() === 0 || day.getUTCDay() === 6;
+    const formattedDate = day.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', timeZone: 'UTC' });
     const project = dayData.projectId ? projects.find(p => p.id === dayData.projectId) : null;
     const absence = dayData.absenceId ? absences.find(a => a.id === dayData.absenceId) : null;
     const hasAbsence = !!dayData.absenceId;
@@ -85,19 +85,18 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
 
-    const daysInMonth: Date[] = [];
-    const lastDay = new Date(year, month + 1, 0).getDate();
-    for (let day = 1; day <= lastDay; day++) {
-        daysInMonth.push(new Date(year, month, day));
-    }
+    const daysInMonth: Date[] = useMemo(() => {
+        const dateList: Date[] = [];
+        const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+        for (let day = 1; day <= lastDay; day++) {
+            dateList.push(new Date(Date.UTC(year, month, day)));
+        }
+        return dateList;
+    }, [year, month]);
     
-    const toDateString = useCallback((day: Date) => {
-        // Use UTC methods to create a string that matches the holiday service, avoiding timezone shifts.
-        const y = day.getFullYear();
-        const m = (day.getMonth() + 1).toString().padStart(2, '0');
-        const d = day.getDate().toString().padStart(2, '0');
-        return `${y}-${m}-${d}`;
-    }, []);
+    const toDateString = (day: Date): string => {
+        return day.toISOString().split('T')[0];
+    };
 
     const handleSave = (data: WorkDay) => {
         onUpdateDay(data);
@@ -170,6 +169,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
                  <CopyDayModal
                     sourceData={copyingDayData}
                     currentDate={currentDate}
+                    holidays={holidays}
                     onCopy={handlePerformCopy}
                     onClose={() => setCopyingDayData(null)}
                 />
