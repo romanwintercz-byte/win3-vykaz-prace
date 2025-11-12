@@ -74,16 +74,11 @@ const TimesheetStatus: React.FC<TimesheetStatusProps> = ({ workTimeFund, totalHo
            </svg>
         );
     }
-
-    const totalWidth = workPercent + absencePercent;
     
-    // Calculate how much of the yellow bar is within the 100% fund limit
-    const yellowWidthUnder100 = Math.max(0, Math.min(absencePercent, 100 - workPercent));
-    // Calculate the total overflow beyond the 100% mark
-    const overflowWidth = Math.max(0, totalWidth - 100);
+    const totalPercent = workPercent + absencePercent;
 
     return (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 col-span-1 lg:col-span-3">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 col-span-1 md:col-span-2 lg:col-span-2">
             <div className="flex justify-between items-start">
                 <div>
                      <div className={`flex items-center gap-2 ${statusColor}`}>
@@ -97,15 +92,16 @@ const TimesheetStatus: React.FC<TimesheetStatusProps> = ({ workTimeFund, totalHo
                 </div>
             </div>
            
-            <div className="mt-4 w-full bg-slate-200 rounded-full h-6 flex" title={`Odpracováno: ${totalHours}h, Absence: ${totalAbsenceHours}h`}>
-                <div style={{ width: `${workPercent}%` }} className="bg-green-500 h-full transition-all duration-300 rounded-l-full"></div>
-                <div style={{ width: `${yellowWidthUnder100}%` }} className="bg-yellow-400 h-full transition-all duration-300"></div>
-                
-                {overflowWidth > 0 && (
-                     <div style={{ width: `${overflowWidth}%` }} className="bg-red-500 h-full transition-all duration-300 rounded-r-full"></div>
-                )}
+            <div className="mt-4 w-full bg-slate-200 rounded-full h-6 relative" title={`Odpracováno: ${totalHours}h, Absence: ${totalAbsenceHours}h`}>
+                <div className="h-full flex">
+                    <div style={{ width: `${workPercent}%` }} className="bg-green-500 h-full transition-all duration-300 rounded-l-full"></div>
+                    <div style={{ width: `${absencePercent}%` }} className="bg-yellow-400 h-full transition-all duration-300"></div>
+                     {totalPercent > 100 && (
+                         <div style={{ width: `${totalPercent - 100}%` }} className="bg-red-500 h-full transition-all duration-300 rounded-r-full"></div>
+                    )}
+                </div>
                 {difference < 0 && (
-                    <div style={{ width: `${Math.abs(difference) / workTimeFund * 100}%`, background: 'repeating-linear-gradient(-45deg, #e2e8f0, #e2e8f0 5px, #fecaca 5px, #fecaca 10px)' }} className="h-full transition-all duration-300 rounded-r-full"></div>
+                    <div style={{ width: `${100 - totalPercent}%`, left: `${totalPercent}%`, background: 'repeating-linear-gradient(-45deg, #e2e8f0, #e2e8f0 5px, #fecaca 5px, #fecaca 10px)' }} className="absolute top-0 h-full transition-all duration-300 rounded-r-full"></div>
                 )}
             </div>
             <div className="flex justify-between text-xs mt-1 text-slate-500 font-semibold">
@@ -128,13 +124,20 @@ export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, project
 
     let totalHours = 0;
     let totalOvertime = 0;
+    let totalHolidayWorkHours = 0;
     const projectHoursBreakdown: Record<string, { hours: number; overtime: number }> = {};
     const absenceHoursBreakdown: Record<string, { name: string; hours: number }> = {};
     let totalAbsenceHours = 0;
     
     monthData.forEach((day: WorkDay) => {
-      totalHours += day.hours;
-      totalOvertime += day.overtime;
+      const isHoliday = holidays.has(day.date);
+
+      if (isHoliday && (day.hours > 0 || day.overtime > 0)) {
+          totalHolidayWorkHours += day.hours + day.overtime;
+      } else {
+          totalHours += day.hours;
+          totalOvertime += day.overtime;
+      }
 
       // Check for absence, but exclude public holidays from the count
       if (day.absenceId && day.absenceAmount > 0 && day.absenceId !== publicHolidayAbsenceId) {
@@ -188,14 +191,14 @@ export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, project
     }
     const workTimeFund = workDaysCount * 8;
 
-    return { totalHours, totalOvertime, projectSummaryData, totalAbsenceHours, absenceSummaryData, workTimeFund };
+    return { totalHours, totalOvertime, totalHolidayWorkHours, projectSummaryData, totalAbsenceHours, absenceSummaryData, workTimeFund };
   }, [workData, currentDate, projects, absences, holidays, publicHolidayAbsenceId]);
 
 
   return (
     <div className="mt-8">
       <h2 className="text-2xl font-bold text-slate-900 mb-6">Měsíční přehled</h2>
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
          <TimesheetStatus 
             workTimeFund={summaryData.workTimeFund}
             totalHours={summaryData.totalHours}
@@ -204,6 +207,10 @@ export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, project
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
             <p className="text-base font-medium text-slate-500">Přesčasy</p>
             <p className="text-4xl font-bold text-orange-600">{summaryData.totalOvertime}h</p>
+        </div>
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <p className="text-base font-medium text-slate-500">Práce ve svátek</p>
+            <p className="text-4xl font-bold text-amber-600">{summaryData.totalHolidayWorkHours}h</p>
         </div>
       </div>
       

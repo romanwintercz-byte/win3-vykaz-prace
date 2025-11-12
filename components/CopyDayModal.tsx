@@ -4,28 +4,24 @@ import { WorkDay } from '../types';
 interface CopyDayModalProps {
   sourceData: WorkDay;
   currentDate: Date;
+  holidays: Set<string>;
   onCopy: (targetDates: string[], sourceData: WorkDay) => void;
   onClose: () => void;
 }
 
-// Helper to get date string in YYYY-MM-DD format
-const toDateString = (day: Date): string => {
-    const y = day.getFullYear();
-    const m = (day.getMonth() + 1).toString().padStart(2, '0');
-    const d = day.getDate().toString().padStart(2, '0');
-    return `${y}-${m}-${d}`;
-};
+// Helper to get date string in YYYY-MM-DD format from a UTC date
+const toDateString = (day: Date): string => day.toISOString().split('T')[0];
 
-export const CopyDayModal: React.FC<CopyDayModalProps> = ({ sourceData, currentDate, onCopy, onClose }) => {
+export const CopyDayModal: React.FC<CopyDayModalProps> = ({ sourceData, currentDate, holidays, onCopy, onClose }) => {
     const [selectedDays, setSelectedDays] = useState<Set<string>>(new Set());
 
     const { daysInMonth, year, month } = useMemo(() => {
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth();
         const dateList: Date[] = [];
-        const lastDay = new Date(year, month + 1, 0).getDate();
+        const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
         for (let day = 1; day <= lastDay; day++) {
-            dateList.push(new Date(year, month, day));
+            dateList.push(new Date(Date.UTC(year, month, day)));
         }
         return { daysInMonth: dateList, year, month };
     }, [currentDate]);
@@ -46,10 +42,11 @@ export const CopyDayModal: React.FC<CopyDayModalProps> = ({ sourceData, currentD
     const handleSelectWorkdays = () => {
         const workdays = new Set<string>();
         daysInMonth.forEach(day => {
-            const dayOfWeek = day.getDay();
+            const dayOfWeek = day.getUTCDay(); // Use getUTCDay for UTC date
             const dateString = toDateString(day);
+            const isHoliday = holidays.has(dateString);
             // In JS, Sunday is 0 and Saturday is 6.
-            if (dayOfWeek !== 0 && dayOfWeek !== 6 && dateString !== sourceData.date) {
+            if (dayOfWeek !== 0 && dayOfWeek !== 6 && dateString !== sourceData.date && !isHoliday) {
                 workdays.add(dateString);
             }
         });
@@ -67,8 +64,8 @@ export const CopyDayModal: React.FC<CopyDayModalProps> = ({ sourceData, currentD
     };
     
     const [sourceYear, sourceMonth, sourceDay] = sourceData.date.split('-').map(Number);
-    const sourceDateFormatted = new Date(sourceYear, sourceMonth - 1, sourceDay)
-        .toLocaleDateString('cs-CZ', { day: 'numeric', month: 'long' });
+    const sourceDateFormatted = new Date(Date.UTC(sourceYear, sourceMonth - 1, sourceDay))
+        .toLocaleDateString('cs-CZ', { day: 'numeric', month: 'long', timeZone: 'UTC' });
 
     // Stop propagation to prevent closing modal when clicking inside
     const handleModalContentClick = (e: React.MouseEvent) => e.stopPropagation();
@@ -101,24 +98,33 @@ export const CopyDayModal: React.FC<CopyDayModalProps> = ({ sourceData, currentD
                         const dateString = toDateString(day);
                         const isSelected = selectedDays.has(dateString);
                         const isSource = dateString === sourceData.date;
-                        const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+                        const isWeekend = day.getUTCDay() === 0 || day.getUTCDay() === 6;
+                        const isHoliday = holidays.has(dateString);
 
-                        const buttonClasses = `
-                            p-2 rounded-md transition-colors text-sm
-                            ${isSource ? 'bg-blue-600 text-white cursor-not-allowed' : ''}
-                            ${isSelected ? 'bg-blue-200 text-blue-800 font-bold ring-2 ring-blue-400' : ''}
-                            ${!isSource && !isSelected ? (isWeekend ? 'bg-slate-100 text-slate-500 hover:bg-slate-200' : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200') : ''}
-                        `;
+                        let buttonClasses = 'p-2 rounded-md transition-colors text-sm';
+                        if (isSource) {
+                            buttonClasses += ' bg-blue-600 text-white cursor-not-allowed';
+                        } else if (isSelected) {
+                            buttonClasses += ' bg-blue-200 text-blue-800 font-bold ring-2 ring-blue-400';
+                        } else {
+                            if (isHoliday) {
+                                buttonClasses += ' bg-amber-100 text-amber-700 hover:bg-amber-200 font-semibold cursor-not-allowed';
+                            } else if (isWeekend) {
+                                buttonClasses += ' bg-slate-100 text-slate-500 hover:bg-slate-200';
+                            } else {
+                                buttonClasses += ' bg-white hover:bg-slate-100 text-slate-700 border border-slate-200';
+                            }
+                        }
 
                         return (
                             <button
                                 key={dateString}
                                 onClick={() => handleToggleDay(dateString)}
-                                disabled={isSource}
+                                disabled={isSource || isHoliday}
                                 className={buttonClasses}
                                 aria-pressed={isSelected}
                             >
-                                {day.getDate()}
+                                {day.getUTCDate()}
                             </button>
                         );
                     })}
