@@ -12,6 +12,7 @@ interface HeaderProps {
   onOpenProjectManager: () => void;
   onOpenAbsenceManager: () => void;
   onOpenEmployeeManager: () => void;
+  onOpenDataManager: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -25,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenProjectManager,
   onOpenAbsenceManager,
   onOpenEmployeeManager,
+  onOpenDataManager,
 }) => {
   const changeMonth = (offset: number) => {
     const newDate = new Date(currentDate);
@@ -39,13 +41,13 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="flex items-center gap-4">
         <h1 className="text-3xl font-bold text-slate-900">Výkaz Práce</h1>
         <div className="flex items-center bg-white rounded-lg shadow-sm border border-slate-200 p-1">
-          <button onClick={() => changeMonth(-1)} className="p-2 rounded-md hover:bg-slate-100 text-slate-500">
+          <button onClick={() => changeMonth(-1)} className="p-2 rounded-md hover:bg-slate-100 text-slate-500" aria-label="Předchozí měsíc">
             <ChevronLeftIcon />
           </button>
           <span className="w-48 text-center font-semibold text-lg capitalize">
             {currentDate.toLocaleString('cs-CZ', { month: 'long', year: 'numeric' })}
           </span>
-          <button onClick={() => changeMonth(1)} className="p-2 rounded-md hover:bg-slate-100 text-slate-500">
+          <button onClick={() => changeMonth(1)} className="p-2 rounded-md hover:bg-slate-100 text-slate-500" aria-label="Následující měsíc">
             <ChevronRightIcon />
           </button>
         </div>
@@ -62,6 +64,13 @@ export const Header: React.FC<HeaderProps> = ({
             <option key={emp.id} value={emp.id}>{emp.name}</option>
           ))}
         </select>
+        <button
+          onClick={onOpenDataManager}
+          className="flex items-center justify-center p-2 bg-white text-slate-600 border border-slate-300 font-semibold rounded-lg shadow-sm hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition"
+          aria-label="Správa dat"
+        >
+          <DatabaseIcon />
+        </button>
         <button
           onClick={onOpenEmployeeManager}
           className="flex items-center justify-center p-2 bg-white text-slate-600 border border-slate-300 font-semibold rounded-lg shadow-sm hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition"
@@ -120,5 +129,10 @@ const ClipboardListIcon: React.FC = () => (
 const UserGroupIcon: React.FC = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.124-1.282-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.124-1.282.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+    </svg>
+);
+const DatabaseIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7a8 8 0 0116 0M12 21v-4" />
     </svg>
 );

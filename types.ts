@@ -33,3 +33,17 @@ export interface ReportData {
     projects: Project[];
     absences: Absence[];
 }
+
+export interface FullBackup {
+  type: 'full_backup';
+  employees: Employee[];
+  projects: Project[];
+  absences: Absence[];
+  allWorkData: Record<string, Record<string, WorkDay>>;
+}
+
+export interface EmployeeBackup {
+  type: 'employee_data';
+  employee: Employee;
+  workData: Record<string, WorkDay>;
+}

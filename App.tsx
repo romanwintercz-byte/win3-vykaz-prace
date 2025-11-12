@@ -7,8 +7,9 @@ import { Report } from './components/Report';
 import { ProjectManager } from './components/ProjectManager';
 import { AbsenceManager } from './components/AbsenceManager';
 import { EmployeeManager } from './components/EmployeeManager';
+import { DataManager } from './components/DataManager';
 
-import { WorkDay, Project, Absence, Employee } from './types';
+import { WorkDay, Project, Absence, Employee, FullBackup, EmployeeBackup } from './types';
 
 // --- Holiday Calculation Logic ---
 
@@ -123,6 +124,7 @@ const App: React.FC = () => {
   const [isProjectManagerOpen, setIsProjectManagerOpen] = useState<boolean>(false);
   const [isAbsenceManagerOpen, setIsAbsenceManagerOpen] = useState<boolean>(false);
   const [isEmployeeManagerOpen, setIsEmployeeManagerOpen] = useState<boolean>(false);
+  const [isDataManagerOpen, setIsDataManagerOpen] = useState<boolean>(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
   const activeEmployee = useMemo(() => employees.find(e => e.id === activeEmployeeId), [employees, activeEmployeeId]);
@@ -293,6 +295,60 @@ const App: React.FC = () => {
       setShowReport(false);
   }
 
+  const handleImportData = (jsonString: string) => {
+    try {
+      const data: FullBackup | EmployeeBackup = JSON.parse(jsonString);
+
+      if (data.type === 'full_backup') {
+        const backupData = data as FullBackup;
+        if (!backupData.employees || !backupData.projects || !backupData.absences || !backupData.allWorkData) {
+          throw new Error("Soubor s kompletní zálohou nemá správnou strukturu.");
+        }
+        if (window.confirm("Opravdu si přejete importovat kompletní zálohu? Všechna stávající data v aplikaci budou přepsána daty ze souboru. Tuto akci nelze vrátit zpět.")) {
+          setEmployees(backupData.employees);
+          setProjects(backupData.projects);
+          setAbsences(backupData.absences);
+          setAllWorkData(backupData.allWorkData);
+          const firstActiveEmployee = backupData.employees.find(e => !e.archived);
+          setActiveEmployeeId(firstActiveEmployee?.id || null);
+          alert("Data byla úspěšně importována.");
+          setIsDataManagerOpen(false);
+        }
+      } else if (data.type === 'employee_data') {
+        const employeeData = data as EmployeeBackup;
+         if (!employeeData.employee || !employeeData.workData) {
+          throw new Error("Soubor s daty zaměstnance nemá správnou strukturu.");
+        }
+        const { employee: importedEmployee, workData: importedWorkData } = employeeData;
+
+        const existingEmployee = employees.find(e => e.id === importedEmployee.id);
+
+        if (existingEmployee) {
+          if (window.confirm(`Chystáte se importovat a sloučit data pro zaměstnance ${existingEmployee.name}. Existující záznamy pro stejné dny budou přepsány novými. Přejete si pokračovat?`)) {
+            const currentEmployeeData = allWorkData[existingEmployee.id] || {};
+            const mergedData = { ...currentEmployeeData, ...importedWorkData };
+            setAllWorkData(prev => ({ ...prev, [existingEmployee.id]: mergedData }));
+            alert("Data zaměstnance byla úspěšně sloučena.");
+            setIsDataManagerOpen(false);
+          }
+        } else {
+          if (window.confirm(`Zaměstnanec ${importedEmployee.name} nebyl v aplikaci nalezen. Přejete si ho založit jako nového a importovat jeho data?`)) {
+            setEmployees(prev => [...prev, importedEmployee]);
+            setAllWorkData(prev => ({ ...prev, [importedEmployee.id]: importedWorkData }));
+            setActiveEmployeeId(importedEmployee.id);
+            alert("Nový zaměstnanec byl vytvořen a data byla importována.");
+            setIsDataManagerOpen(false);
+          }
+        }
+      } else {
+        throw new Error("Neznámý typ souboru pro import.");
+      }
+    } catch (error) {
+      console.error("Chyba při importu dat:", error);
+      alert(`Při importu došlo k chybě: ${error instanceof Error ? error.message : 'Neznámá chyba'}`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
       <div className="container mx-auto p-4 md:p-8">
@@ -307,6 +363,7 @@ const App: React.FC = () => {
           onOpenProjectManager={() => setIsProjectManagerOpen(true)}
           onOpenAbsenceManager={() => setIsAbsenceManagerOpen(true)}
           onOpenEmployeeManager={() => setIsEmployeeManagerOpen(true)}
+          onOpenDataManager={() => setIsDataManagerOpen(true)}
         />
         
         <main className="mt-8 grid grid-cols-1 gap-8">
@@ -366,6 +423,15 @@ const App: React.FC = () => {
             onAddEmployee={handleAddEmployee}
             onUpdateEmployee={handleUpdateEmployee}
             onArchiveEmployee={handleArchiveEmployee}
+        />
+        <DataManager
+          isOpen={isDataManagerOpen}
+          onClose={() => setIsDataManagerOpen(false)}
+          employees={employees}
+          projects={projects}
+          absences={absences}
+          allWorkData={allWorkData}
+          onImportData={handleImportData}
         />
       </div>
     </div>
