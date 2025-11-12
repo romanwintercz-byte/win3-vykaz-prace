@@ -22,6 +22,100 @@ interface AbsenceSummary {
     hours: number;
 }
 
+// --- Helper Functions & Components ---
+
+interface TimesheetStatusProps {
+    workTimeFund: number;
+    totalHours: number;
+    totalAbsenceHours: number;
+}
+
+const TimesheetStatus: React.FC<TimesheetStatusProps> = ({ workTimeFund, totalHours, totalAbsenceHours }) => {
+    if (workTimeFund === 0) {
+        return (
+             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <p className="text-sm font-medium text-slate-500">Stav výkazu</p>
+                <p className="text-lg font-semibold text-slate-700 mt-1">V tomto měsíci není žádný fond pracovní doby.</p>
+            </div>
+        );
+    }
+    const totalReportedHours = totalHours + totalAbsenceHours;
+    const difference = totalReportedHours - workTimeFund;
+
+    const workPercent = workTimeFund > 0 ? (totalHours / workTimeFund) * 100 : 0;
+    const absencePercent = workTimeFund > 0 ? (totalAbsenceHours / workTimeFund) * 100 : 0;
+    
+    let statusText = '';
+    let statusColor = '';
+    let StatusIcon: React.FC = () => null;
+
+    if (difference === 0) {
+        statusText = 'Výkaz souhlasí';
+        statusColor = 'text-green-600';
+        StatusIcon = () => (
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+        );
+    } else if (difference < 0) {
+        statusText = `Chybí vykázat ${Math.abs(difference)}h`;
+        statusColor = 'text-red-600';
+        StatusIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+               <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+           </svg>
+        );
+    } else {
+        statusText = `Přesah o ${difference}h`;
+        statusColor = 'text-red-600';
+        StatusIcon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
+               <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+           </svg>
+        );
+    }
+
+    const totalWidth = workPercent + absencePercent;
+    
+    // Calculate how much of the yellow bar is within the 100% fund limit
+    const yellowWidthUnder100 = Math.max(0, Math.min(absencePercent, 100 - workPercent));
+    // Calculate the total overflow beyond the 100% mark
+    const overflowWidth = Math.max(0, totalWidth - 100);
+
+    return (
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 col-span-1 lg:col-span-3">
+            <div className="flex justify-between items-start">
+                <div>
+                     <div className={`flex items-center gap-2 ${statusColor}`}>
+                        <StatusIcon />
+                        <h3 className="text-xl font-bold">{statusText}</h3>
+                    </div>
+                    <div className="mt-1 flex items-center gap-4 text-sm text-slate-600 font-medium">
+                        <span>Fond: <span className="font-bold text-slate-800">{workTimeFund}h</span></span>
+                        <span>Vykázáno: <span className="font-bold text-slate-800">{totalReportedHours}h</span></span>
+                    </div>
+                </div>
+            </div>
+           
+            <div className="mt-4 w-full bg-slate-200 rounded-full h-6 flex" title={`Odpracováno: ${totalHours}h, Absence: ${totalAbsenceHours}h`}>
+                <div style={{ width: `${workPercent}%` }} className="bg-green-500 h-full transition-all duration-300 rounded-l-full"></div>
+                <div style={{ width: `${yellowWidthUnder100}%` }} className="bg-yellow-400 h-full transition-all duration-300"></div>
+                
+                {overflowWidth > 0 && (
+                     <div style={{ width: `${overflowWidth}%` }} className="bg-red-500 h-full transition-all duration-300 rounded-r-full"></div>
+                )}
+                {difference < 0 && (
+                    <div style={{ width: `${Math.abs(difference) / workTimeFund * 100}%`, background: 'repeating-linear-gradient(-45deg, #e2e8f0, #e2e8f0 5px, #fecaca 5px, #fecaca 10px)' }} className="h-full transition-all duration-300 rounded-r-full"></div>
+                )}
+            </div>
+            <div className="flex justify-between text-xs mt-1 text-slate-500 font-semibold">
+                <span>0h</span>
+                <span>{workTimeFund}h</span>
+            </div>
+        </div>
+    );
+};
+
 
 export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, projects, absences, holidays, publicHolidayAbsenceId }) => {
   const summaryData = useMemo(() => {
@@ -99,20 +193,25 @@ export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, project
 
 
   return (
-    <div className="mt-8 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+    <div className="mt-8">
       <h2 className="text-2xl font-bold text-slate-900 mb-6">Měsíční přehled</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <SummaryCard title="Fond prac. doby" value={`${summaryData.workTimeFund}h`} />
-        <SummaryCard title="Odpracováno hodin" value={`${summaryData.totalHours}h`} />
-        <SummaryCard title="Přesčasy" value={`${summaryData.totalOvertime}h`} color="text-orange-600" />
-        <SummaryCard title="Absence celkem" value={`${summaryData.totalAbsenceHours}h`} color="text-yellow-600"/>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+         <TimesheetStatus 
+            workTimeFund={summaryData.workTimeFund}
+            totalHours={summaryData.totalHours}
+            totalAbsenceHours={summaryData.totalAbsenceHours}
+         />
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+            <p className="text-base font-medium text-slate-500">Přesčasy</p>
+            <p className="text-4xl font-bold text-orange-600">{summaryData.totalOvertime}h</p>
+        </div>
       </div>
       
       <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
         {summaryData.projectSummaryData.length > 0 &&
             <div>
                 <h3 className="text-xl font-bold text-slate-800 mb-4">Přehled projektů</h3>
-                <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
                     <table className="min-w-full divide-y divide-slate-200">
                         <thead className="bg-slate-50">
                             <tr>
@@ -143,7 +242,7 @@ export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, project
         {summaryData.absenceSummaryData.length > 0 &&
             <div>
                 <h3 className="text-xl font-bold text-slate-800 mb-4">Přehled absencí</h3>
-                <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                <div className="overflow-x-auto border border-slate-200 rounded-lg bg-white">
                     <table className="min-w-full divide-y divide-slate-200">
                         <thead className="bg-slate-50">
                             <tr>
@@ -168,17 +267,3 @@ export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, project
     </div>
   );
 };
-
-
-interface SummaryCardProps {
-    title: string;
-    value: string;
-    color?: string;
-}
-
-const SummaryCard: React.FC<SummaryCardProps> = ({ title, value, color = 'text-blue-600' }) => (
-    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-        <p className="text-sm font-medium text-slate-500">{title}</p>
-        <p className={`text-3xl font-bold ${color}`}>{value}</p>
-    </div>
-);
