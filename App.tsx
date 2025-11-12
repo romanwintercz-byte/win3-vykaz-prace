@@ -231,21 +231,6 @@ const App: React.FC = () => {
     setProjects(prev => prev.map(p => p.id === projectId ? { ...p, archived: isArchived } : p));
   };
 
-  const handleDeleteProject = (projectId: string) => {
-    setProjects(prev => prev.filter(p => p.id !== projectId));
-    setAllWorkData(prev => {
-      const newData = { ...prev };
-      Object.keys(newData).forEach(empId => {
-        Object.keys(newData[empId]).forEach(date => {
-          if (newData[empId][date].projectId === projectId) {
-            newData[empId][date].projectId = null;
-          }
-        });
-      });
-      return newData;
-    });
-  };
-
   const handleAddAbsence = (name: string) => {
     const newAbsence: Absence = {
       id: `absence-${Date.now()}`,
@@ -294,22 +279,6 @@ const App: React.FC = () => {
       setActiveEmployeeId(newActive?.id || null);
     }
   };
-
-  const handleDeleteEmployee = (employeeId: string) => {
-    if (window.confirm(`Opravdu si přejete smazat tohoto zaměstnance? Veškerá jeho data budou nevratně odstraněna.`)) {
-      setEmployees(prev => prev.filter(e => e.id !== employeeId));
-      setAllWorkData(prev => {
-        const newData = { ...prev };
-        delete newData[employeeId];
-        return newData;
-      });
-      if (activeEmployeeId === employeeId) {
-        const newActive = employees.find(e => !e.archived && e.id !== employeeId);
-        setActiveEmployeeId(newActive?.id || null);
-      }
-    }
-  };
-
 
   const handleToggleReport = () => {
     if (!activeEmployeeId) {
@@ -381,7 +350,6 @@ const App: React.FC = () => {
             projects={projects}
             onAddProject={handleAddProject}
             onUpdateProject={handleUpdateProject}
-            onDeleteProject={handleDeleteProject}
             onArchiveProject={handleArchiveProject}
         />
         <AbsenceManager 
@@ -398,7 +366,6 @@ const App: React.FC = () => {
             onAddEmployee={handleAddEmployee}
             onUpdateEmployee={handleUpdateEmployee}
             onArchiveEmployee={handleArchiveEmployee}
-            onDeleteEmployee={handleDeleteEmployee}
         />
       </div>
     </div>

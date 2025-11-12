@@ -7,11 +7,10 @@ interface ProjectManagerProps {
     projects: Project[];
     onAddProject: (name: string) => void;
     onUpdateProject: (project: Project) => void;
-    onDeleteProject: (id: string) => void;
     onArchiveProject: (id: string, isArchived: boolean) => void;
 }
 
-export const ProjectManager: React.FC<ProjectManagerProps> = ({ isOpen, onClose, projects, onAddProject, onUpdateProject, onDeleteProject, onArchiveProject }) => {
+export const ProjectManager: React.FC<ProjectManagerProps> = ({ isOpen, onClose, projects, onAddProject, onUpdateProject, onArchiveProject }) => {
     const [newProjectName, setNewProjectName] = useState('');
     const [editingProject, setEditingProject] = useState<Project | null>(null);
 
@@ -100,7 +99,6 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({ isOpen, onClose,
                                             {project.archived ? <UnarchiveIcon /> : <ArchiveIcon />}
                                         </button>
                                         <button onClick={() => handleStartEdit(project)} className="p-1.5 text-slate-500 hover:bg-slate-200 rounded-md"><PencilIcon /></button>
-                                        <button onClick={() => onDeleteProject(project.id)} className="p-1.5 text-red-500 hover:bg-red-100 rounded-md"><TrashIcon /></button>
                                    </>
                                )}
                             </div>
