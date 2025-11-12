@@ -89,9 +89,9 @@ const isDayEmpty = (day: WorkDay): boolean => {
 // --- Component ---
 
 const initialProjects: Project[] = [
-    { id: 'proj-1', name: 'Interní systém', color: '#0088FE' },
-    { id: 'proj-2', name: 'Web pro klienta A', color: '#00C49F' },
-    { id: 'proj-3', name: 'Mobilní aplikace', color: '#FFBB28' },
+    { id: 'proj-1', name: 'Interní systém', color: '#0088FE', archived: false },
+    { id: 'proj-2', name: 'Web pro klienta A', color: '#00C49F', archived: false },
+    { id: 'proj-3', name: 'Mobilní aplikace', color: '#FFBB28', archived: false },
 ];
 
 const initialAbsences: Absence[] = [
@@ -217,13 +217,18 @@ const App: React.FC = () => {
     const newProject: Project = {
       id: `proj-${Date.now()}`,
       name,
-      color: `#${Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')}`
+      color: `#${Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')}`,
+      archived: false,
     };
     setProjects(prev => [...prev, newProject]);
   };
 
   const handleUpdateProject = (updatedProject: Project) => {
     setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
+  };
+
+  const handleArchiveProject = (projectId: string, isArchived: boolean) => {
+    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, archived: isArchived } : p));
   };
 
   const handleDeleteProject = (projectId: string) => {
@@ -377,6 +382,7 @@ const App: React.FC = () => {
             onAddProject={handleAddProject}
             onUpdateProject={handleUpdateProject}
             onDeleteProject={handleDeleteProject}
+            onArchiveProject={handleArchiveProject}
         />
         <AbsenceManager 
             isOpen={isAbsenceManagerOpen}

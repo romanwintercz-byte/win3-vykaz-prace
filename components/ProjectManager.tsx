@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Project } from '../types';
 
 interface ProjectManagerProps {
@@ -8,11 +8,21 @@ interface ProjectManagerProps {
     onAddProject: (name: string) => void;
     onUpdateProject: (project: Project) => void;
     onDeleteProject: (id: string) => void;
+    onArchiveProject: (id: string, isArchived: boolean) => void;
 }
 
-export const ProjectManager: React.FC<ProjectManagerProps> = ({ isOpen, onClose, projects, onAddProject, onUpdateProject, onDeleteProject }) => {
+export const ProjectManager: React.FC<ProjectManagerProps> = ({ isOpen, onClose, projects, onAddProject, onUpdateProject, onDeleteProject, onArchiveProject }) => {
     const [newProjectName, setNewProjectName] = useState('');
     const [editingProject, setEditingProject] = useState<Project | null>(null);
+
+    const sortedProjects = useMemo(() => {
+        return [...projects].sort((a, b) => {
+            if (a.archived !== b.archived) {
+                return a.archived ? 1 : -1;
+            }
+            return a.name.localeCompare(b.name);
+        });
+    }, [projects]);
 
     const handleAddProject = (e: React.FormEvent) => {
         e.preventDefault();
@@ -59,8 +69,8 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({ isOpen, onClose,
                     </button>
                 </div>
                 <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
-                    {projects.map(project => (
-                        <div key={project.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    {sortedProjects.map(project => (
+                        <div key={project.id} className={`flex items-center justify-between p-3 rounded-lg border ${project.archived ? 'bg-slate-100 border-slate-200' : 'bg-slate-50 border-slate-200'}`}>
                             {editingProject?.id === project.id ? (
                                 <div className="flex-grow flex items-center gap-2">
                                     <div className="w-4 h-4 rounded-full" style={{ backgroundColor: project.color }}></div>
@@ -74,7 +84,8 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({ isOpen, onClose,
                             ) : (
                                 <div className="flex items-center gap-3">
                                     <div className="w-4 h-4 rounded-full" style={{ backgroundColor: project.color }}></div>
-                                    <span className="font-semibold">{project.name}</span>
+                                    <span className={`font-semibold ${project.archived ? 'text-slate-500 italic' : ''}`}>{project.name}</span>
+                                    {project.archived && <span className="text-xs text-slate-500">(Archivováno)</span>}
                                 </div>
                             )}
                             <div className="flex items-center gap-2">
@@ -85,6 +96,9 @@ export const ProjectManager: React.FC<ProjectManagerProps> = ({ isOpen, onClose,
                                     </>
                                ) : (
                                    <>
+                                        <button onClick={() => onArchiveProject(project.id, !project.archived)} className={`p-1.5 hover:bg-slate-200 rounded-md ${project.archived ? 'text-green-600' : 'text-slate-500'}`} aria-label={project.archived ? 'Obnovit' : 'Archivovat'}>
+                                            {project.archived ? <UnarchiveIcon /> : <ArchiveIcon />}
+                                        </button>
                                         <button onClick={() => handleStartEdit(project)} className="p-1.5 text-slate-500 hover:bg-slate-200 rounded-md"><PencilIcon /></button>
                                         <button onClick={() => onDeleteProject(project.id)} className="p-1.5 text-red-500 hover:bg-red-100 rounded-md"><TrashIcon /></button>
                                    </>
@@ -120,3 +134,5 @@ const TrashIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" classN
 const SaveIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>;
 const CancelIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>;
 const CloseIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>;
+const ArchiveIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4z" /><path fillRule="evenodd" d="M3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8zm5 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" clipRule="evenodd" /></svg>;
+const UnarchiveIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M2 6a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm1.5 8.5a.5.5 0 01.5-.5h8a.5.5 0 010 1H4a.5.5 0 01-.5-.5zM4 12a.5.5 0 01.5-.5h8a.5.5 0 010 1H4a.5.5 0 01-.5-.5z" clipRule="evenodd" /><path d="M5 3a2 2 0 00-2 2v1.5a.5.5 0 001 0V5a1 1 0 011-1h10a1 1 0 011 1v1.5a.5.5 0 001 0V5a2 2 0 00-2-2H5z" /></svg>;

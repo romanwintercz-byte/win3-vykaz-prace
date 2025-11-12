@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { WorkDay, Project, Absence } from '../types';
 
 interface DayEditorModalProps {
@@ -13,6 +13,19 @@ interface DayEditorModalProps {
 export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave, onSaveAndCopy, onClose, projects, absences }) => {
   const [formData, setFormData] = useState<WorkDay>(dayData);
   const isFullDayAbsence = !!formData.absenceId && formData.absenceAmount === 1;
+
+  const projectOptions = useMemo(() => {
+    const activeProjects = projects.filter(p => !p.archived);
+    const selectedProject = formData.projectId ? projects.find(p => p.id === formData.projectId) : null;
+
+    if (selectedProject && selectedProject.archived) {
+      // If the currently selected project is archived, add it to the top of the list
+      // so the user can see it but can switch away from it.
+      return [selectedProject, ...activeProjects];
+    }
+    
+    return activeProjects;
+  }, [projects, formData.projectId]);
 
   useEffect(() => {
     setFormData(dayData);
@@ -166,7 +179,7 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
                 className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white text-slate-800 border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
             >
                 <option value="">Bez projektu</option>
-                {projects.map(project => (
+                {projectOptions.map(project => (
                     <option key={project.id} value={project.id}>{project.name}</option>
                 ))}
             </select>
