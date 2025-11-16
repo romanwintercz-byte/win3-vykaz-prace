@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { WorkDay, Project, Absence } from '../types';
+import { WorkDay, Project, Absence, TimeEntry } from '../types';
 
 interface SummaryProps {
     workData: Record<string, WorkDay>;
@@ -47,7 +47,7 @@ const TimesheetStatus: React.FC<TimesheetStatusProps> = ({ workTimeFund, totalWo
     let statusColor = '';
     let StatusIcon: React.FC = () => null;
 
-    if (difference === 0) {
+    if (Math.abs(difference) < 0.01) {
         statusText = 'Výkaz souhlasí';
         statusColor = 'text-green-600';
         StatusIcon = () => (
@@ -56,7 +56,7 @@ const TimesheetStatus: React.FC<TimesheetStatusProps> = ({ workTimeFund, totalWo
             </svg>
         );
     } else if (difference < 0) {
-        statusText = `Chybí vykázat ${Math.abs(difference)}h`;
+        statusText = `Chybí vykázat ${Math.abs(difference).toFixed(2)}h`;
         statusColor = 'text-red-600';
         StatusIcon = () => (
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
@@ -64,7 +64,7 @@ const TimesheetStatus: React.FC<TimesheetStatusProps> = ({ workTimeFund, totalWo
             </svg>
         );
     } else {
-        statusText = `Přesah o ${difference}h`;
+        statusText = `Přesah o ${difference.toFixed(2)}h`;
         statusColor = 'text-orange-600';
         StatusIcon = () => (
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor">
@@ -110,6 +110,12 @@ const TimesheetStatus: React.FC<TimesheetStatusProps> = ({ workTimeFund, totalWo
     );
 };
 
+const timeToMinutes = (time: string): number => {
+    if (!time) return 0;
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+};
+
 export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, projects, absences, holidays, publicHolidayAbsenceId }) => {
     const summaryData = useMemo(() => {
         const monthData = Object.values(workData).filter(
@@ -127,19 +133,28 @@ export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, project
         let totalAbsenceHours = 0;
 
         monthData.forEach((day: WorkDay) => {
-            if (day.hours > 0 || day.overtime > 0) {
-                if (holidays.has(day.date)) {
-                    totalHolidayWorkHours += day.hours + day.overtime;
-                } else {
-                    totalHours += day.hours;
-                    totalOvertime += day.overtime;
-                }
-                 const projectKey = day.projectId || 'other';
-                if (!projectHoursBreakdown[projectKey]) {
-                    projectHoursBreakdown[projectKey] = { hours: 0, overtime: 0 };
-                }
-                projectHoursBreakdown[projectKey].hours += day.hours;
-                projectHoursBreakdown[projectKey].overtime += day.overtime;
+            totalHours += day.hours;
+            totalOvertime += day.overtime;
+
+            if (holidays.has(day.date) && (day.hours > 0 || day.overtime > 0)) {
+                totalHolidayWorkHours += day.hours + day.overtime;
+            }
+
+            // Project breakdown calculation
+            const totalEntryDuration = day.entries.reduce((acc, entry) => acc + (timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime)), 0);
+
+            if (totalEntryDuration > 0) {
+                day.entries.forEach((entry: TimeEntry) => {
+                    const projectKey = entry.projectId || 'other';
+                    if (!projectHoursBreakdown[projectKey]) {
+                        projectHoursBreakdown[projectKey] = { hours: 0, overtime: 0 };
+                    }
+                    const entryDuration = timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime);
+                    const proportion = entryDuration / totalEntryDuration;
+
+                    projectHoursBreakdown[projectKey].hours += day.hours * proportion;
+                    projectHoursBreakdown[projectKey].overtime += day.overtime * proportion;
+                });
             }
 
             if (day.absenceId && day.absenceAmount > 0 && day.absenceId !== publicHolidayAbsenceId) {
@@ -192,7 +207,7 @@ export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, project
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
                 <TimesheetStatus
                     workTimeFund={summaryData.workTimeFund}
-                    totalWorkHours={summaryData.totalHours + summaryData.totalOvertime + summaryData.totalHolidayWorkHours}
+                    totalWorkHours={summaryData.totalHours + summaryData.totalOvertime}
                     totalAbsenceHours={summaryData.totalAbsenceHours}
                 />
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">

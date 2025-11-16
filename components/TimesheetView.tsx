@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { WorkDay, Project, Absence } from '../types';
+import { WorkDay, Project, Absence, TimeEntry } from '../types';
 import { DayEditorModal } from './DayEditorModal';
 import { CopyDayModal } from './CopyDayModal';
 
@@ -15,43 +15,53 @@ interface DayRowProps {
 const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHoliday, onClick }) => {
     const isWeekend = day.getUTCDay() === 0 || day.getUTCDay() === 6;
     const formattedDate = day.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', timeZone: 'UTC' });
-    const project = dayData.projectId ? projects.find(p => p.id === dayData.projectId) : null;
+    
     const absence = dayData.absenceId ? absences.find(a => a.id === dayData.absenceId) : null;
-    const hasAbsence = !!dayData.absenceId;
-
+    const hasWorkEntries = dayData.entries.length > 0;
+    
     const rowClasses = [
         'grid grid-cols-12 gap-x-4 items-center p-2 rounded-lg cursor-pointer',
         'border border-transparent hover:border-blue-400 hover:bg-blue-50 transition-all'
     ];
 
-    if (hasAbsence) {
-        rowClasses.push('bg-yellow-50');
-    } else if (isHoliday && !dayData.startTime) {
-        rowClasses.push('bg-amber-50');
-    } else if (isWeekend && !dayData.startTime) {
+    if (dayData.absenceId) {
+        rowClasses.push('bg-yellow-50/80');
+    } else if (isHoliday && !hasWorkEntries) {
+        rowClasses.push('bg-amber-50/70');
+    } else if (isWeekend && !hasWorkEntries) {
         rowClasses.push('bg-slate-50');
     } else {
         rowClasses.push('bg-white');
     }
+    
+    const timeRange = hasWorkEntries ? `${dayData.entries[0].startTime} - ${dayData.entries[dayData.entries.length - 1].endTime}` : '-';
+    
+    const projectList = useMemo(() => {
+        if (!hasWorkEntries) return null;
+        const projectIds = new Set(dayData.entries.map(e => e.projectId).filter(Boolean));
+        return Array.from(projectIds).map(id => projects.find(p => p.id === id));
+    }, [dayData.entries, projects, hasWorkEntries]);
 
     return (
-        <div
-            className={rowClasses.join(' ')}
-            onClick={onClick}
-        >
+        <div className={rowClasses.join(' ')} onClick={onClick}>
             <div className="col-span-2 font-semibold text-slate-800">{formattedDate}</div>
-            <div className="col-span-2 text-sm text-slate-500 font-mono text-center">
-                {dayData.startTime && dayData.endTime ? `${dayData.startTime} - ${dayData.endTime}`: '-'}
-            </div>
-            <div className={`col-span-2 text-sm truncate ${hasAbsence ? 'font-semibold text-yellow-800' : 'text-slate-500'}`}>
+            <div className="col-span-2 text-sm text-slate-500 font-mono text-center">{timeRange}</div>
+            <div className={`col-span-2 text-sm truncate ${dayData.absenceId ? 'font-semibold text-yellow-800' : 'text-slate-500'}`}>
                 {absence ? `${absence.name} ${dayData.absenceAmount === 0.5 ? '(1/2)' : ''}` : '-'}
             </div>
-            <div className="col-span-2 text-sm text-slate-500 flex items-center gap-2 truncate">
-                {project && <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }}></div>}
-                <span className="truncate">{project?.name || '-'}</span>
+            <div className="col-span-4 text-sm text-slate-500 flex items-center gap-2 truncate">
+                {projectList && projectList.length > 0 ? (
+                     <div className="flex items-center gap-1.5 overflow-hidden">
+                        {projectList.map(p => p && (
+                            <div key={p.id} className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded">
+                                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }}></div>
+                                <span className="text-xs truncate">{p.name}</span>
+                            </div>
+                        ))}
+                    </div>
+                ) : absence ? null : '-'}
             </div>
-            <div className="col-span-2 text-sm text-slate-500 truncate">{dayData.notes || '-'}</div>
-            <div className="col-span-1 text-sm text-slate-600 text-right">{dayData.hours > 0 ? `${dayData.hours.toFixed(2)}h` : '-'}</div>
+            <div className="col-span-1 text-sm text-slate-600 font-semibold text-right">{dayData.hours > 0 ? `${dayData.hours.toFixed(2)}h` : '-'}</div>
             <div className="col-span-1 text-sm text-orange-600 font-bold text-right">{dayData.overtime > 0 ? `${dayData.overtime.toFixed(2)}h` : '-'}</div>
         </div>
     );
@@ -111,8 +121,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
                     <div className="col-span-2">Datum</div>
                     <div className="col-span-2 text-center">Čas od-do</div>
                     <div className="col-span-2">Absence</div>
-                    <div className="col-span-2">Projekt</div>
-                    <div className="col-span-2">Poznámky</div>
+                    <div className="col-span-4">Projekty</div>
                     <div className="col-span-1 text-right">Hodiny</div>
                     <div className="col-span-1 text-right">Přesčas</div>
                 </div>
@@ -121,14 +130,11 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
                         const dateString = toDateString(day);
                         const dataForDay = workData[dateString] || {
                             date: dateString,
-                            startTime: null,
-                            endTime: null,
+                            entries: [],
                             hours: 0,
                             overtime: 0,
-                            projectId: null,
                             absenceId: null,
                             absenceAmount: 0,
-                            notes: ''
                         };
                         return (
                             <DayRow 

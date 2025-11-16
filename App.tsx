@@ -76,7 +76,7 @@ const getCzechPublicHolidays = (year: number): { dates: Date[], strings: Set<str
 };
 
 const isDayEmpty = (day: WorkDay): boolean => {
-    return day.hours === 0 && day.overtime === 0 && day.projectId === null && day.absenceId === null && day.absenceAmount === 0 && day.notes === '' && day.startTime === null && day.endTime === null;
+    return day.entries.length === 0 && day.absenceId === null;
 };
 
 // --- Component ---
@@ -147,14 +147,11 @@ const App: React.FC = () => {
             if (!existingData || isDayEmpty(existingData)) {
                 holidayUpdates[dateString] = {
                     date: dateString,
-                    startTime: null,
-                    endTime: null,
+                    entries: [],
                     hours: 0,
                     overtime: 0,
-                    projectId: null,
                     absenceId: publicHolidayAbsenceId,
                     absenceAmount: 1,
-                    notes: 'Státní svátek'
                 };
             }
         });

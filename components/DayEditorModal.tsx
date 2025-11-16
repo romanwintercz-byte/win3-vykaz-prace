@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { WorkDay, Project, Absence } from '../types';
+import { WorkDay, Project, Absence, TimeEntry } from '../types';
 
 interface DayEditorModalProps {
     dayData: WorkDay;
@@ -10,49 +10,64 @@ interface DayEditorModalProps {
     absences: Absence[];
 }
 
-const timeToMinutes = (time: string | null): number => {
+const timeToMinutes = (time: string): number => {
     if (!time) return 0;
     const [hours, minutes] = time.split(':').map(Number);
     return hours * 60 + minutes;
 };
 
+const minutesToTime = (minutes: number): string => {
+    const h = Math.floor(minutes / 60).toString().padStart(2, '0');
+    const m = (minutes % 60).toString().padStart(2, '0');
+    return `${h}:${m}`;
+}
+
 export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave, onSaveAndCopy, onClose, projects, absences }) => {
     const [formData, setFormData] = useState<WorkDay>(dayData);
-    const isFullDayAbsence = !!formData.absenceId && formData.absenceAmount === 1;
-
+    
     const projectOptions = useMemo(() => {
         const activeProjects = projects.filter(p => !p.archived);
-        const selectedProject = formData.projectId ? projects.find(p => p.id === formData.projectId) : null;
-        if (selectedProject && selectedProject.archived) {
-            return [selectedProject, ...activeProjects];
-        }
-        return activeProjects;
-    }, [projects, formData.projectId]);
+        const selectedProjectIds = new Set(formData.entries.map(e => e.projectId));
+        const archivedUsedProjects = projects.filter(p => p.archived && selectedProjectIds.has(p.id));
+        return [...archivedUsedProjects, ...activeProjects];
+    }, [projects, formData.entries]);
 
     useEffect(() => {
         setFormData(dayData);
     }, [dayData]);
     
     useEffect(() => {
-        const startMinutes = timeToMinutes(formData.startTime);
-        const endMinutes = timeToMinutes(formData.endTime);
+        if (formData.absenceId || formData.entries.length === 0) {
+             if (formData.hours !== 0 || formData.overtime !== 0) {
+                setFormData(prev => ({ ...prev, hours: 0, overtime: 0 }));
+            }
+            return;
+        }
 
-        if (!formData.startTime || !formData.endTime || endMinutes <= startMinutes) {
+        const firstEntry = formData.entries[0];
+        const lastEntry = formData.entries[formData.entries.length - 1];
+        
+        if (!firstEntry.startTime || !lastEntry.endTime) {
             if (formData.hours !== 0 || formData.overtime !== 0) {
                 setFormData(prev => ({ ...prev, hours: 0, overtime: 0 }));
             }
             return;
         }
 
-        let durationMinutes = endMinutes - startMinutes;
-        const durationHours = durationMinutes / 60;
+        const totalDurationMinutes = timeToMinutes(lastEntry.endTime) - timeToMinutes(firstEntry.startTime);
+        
+        let workedMinutes = 0;
+        formData.entries.forEach(entry => {
+            if (entry.startTime && entry.endTime) {
+                workedMinutes += timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime);
+            }
+        });
 
-        if (durationHours > 4.5) {
-            durationMinutes -= 30;
+        if (totalDurationMinutes / 60 > 4.5) {
+            workedMinutes -= 30;
         }
 
-        const totalWorkHours = durationMinutes / 60;
-        
+        const totalWorkHours = Math.max(0, workedMinutes / 60);
         const newHours = Math.min(totalWorkHours, 8);
         const newOvertime = Math.max(0, totalWorkHours - 8);
 
@@ -66,48 +81,45 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
                 overtime: roundedOvertime,
             }));
         }
-    }, [formData.startTime, formData.endTime, formData.hours, formData.overtime]);
+    }, [formData.entries, formData.absenceId, formData.hours, formData.overtime]);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
+    const handleAbsenceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const { value } = e.target;
+        const newAbsenceId = value === "" ? null : value;
         
+        setFormData(prev => ({
+            ...prev,
+            absenceId: newAbsenceId,
+            absenceAmount: newAbsenceId ? 1 : 0,
+            entries: newAbsenceId ? [] : prev.entries,
+        }));
+    };
+    
+    const handleEntryChange = (id: string, field: keyof TimeEntry, value: string) => {
         setFormData(prev => {
-            const newState = { ...prev };
-            
-            if (name === 'absenceId') {
-                const newAbsenceId = value === "" ? null : value;
-                newState.absenceId = newAbsenceId;
-                if (newAbsenceId) {
-                    newState.absenceAmount = 1;
-                    newState.startTime = null;
-                    newState.endTime = null;
-                    newState.hours = 0;
-                    newState.overtime = 0;
-                    newState.projectId = null;
-                } else {
-                    newState.absenceAmount = 0;
-                }
-            } else if (name === 'absenceAmount') {
-                const newAmount = Number(value);
-                newState.absenceAmount = newAmount;
-                if (newAmount === 1) {
-                    newState.startTime = null;
-                    newState.endTime = null;
-                    newState.hours = 0;
-                    newState.overtime = 0;
-                    newState.projectId = null;
-                }
-            } else if (name === 'startTime' || name === 'endTime') {
-                 newState[name] = value === '' ? null : value;
-                 if (value) newState.absenceId = null; // Clear absence if time is entered
-            }
-            else if (name === 'projectId') {
-                newState.projectId = value === "" ? null : value;
-            } else {
-                (newState as any)[name] = value;
-            }
-            return newState;
+            const newEntries = prev.entries.map(entry => 
+                entry.id === id ? { ...entry, [field]: value } : entry
+            );
+            return { ...prev, entries: newEntries, absenceId: null, absenceAmount: 0 };
         });
+    };
+    
+    const addEntry = () => {
+        const lastEntry = formData.entries[formData.entries.length - 1];
+        const newStartTime = lastEntry?.endTime || "08:00";
+
+        const newEntry: TimeEntry = {
+            id: `entry-${Date.now()}`,
+            projectId: null,
+            startTime: newStartTime,
+            endTime: minutesToTime(timeToMinutes(newStartTime) + 60),
+            notes: '',
+        };
+        setFormData(prev => ({ ...prev, entries: [...prev.entries, newEntry], absenceId: null, absenceAmount: 0 }));
+    };
+    
+    const removeEntry = (id: string) => {
+        setFormData(prev => ({ ...prev, entries: prev.entries.filter(e => e.id !== id) }));
     };
 
     const handleSaveSubmit = (e: React.FormEvent) => {
@@ -119,14 +131,11 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
         if (window.confirm('Opravdu si přejete smazat tento záznam? Všechna data pro tento den budou odstraněna.')) {
             onSave({
                 date: formData.date,
-                startTime: null,
-                endTime: null,
+                entries: [],
                 hours: 0,
                 overtime: 0,
-                projectId: null,
                 absenceId: null,
                 absenceAmount: 0,
-                notes: ''
             });
         }
     };
@@ -139,10 +148,11 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
     const selectedDate = new Date(Date.UTC(year, month - 1, day));
     const formattedDate = selectedDate.toLocaleDateString('cs-CZ', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
 
-    const handleModalContentClick = (e: React.MouseEvent) => {
-        e.stopPropagation();
-    };
-
+    const handleModalContentClick = (e: React.MouseEvent) => e.stopPropagation();
+    
+    const totalDuration = formData.entries.length > 0 ? timeToMinutes(formData.entries[formData.entries.length-1].endTime) - timeToMinutes(formData.entries[0].startTime) : 0;
+    const showLunchBreak = totalDuration / 60 > 4.5;
+    
     return (
         <div
             className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity"
@@ -150,7 +160,7 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
         >
             <form
                 onSubmit={handleSaveSubmit}
-                className="bg-white p-6 rounded-xl shadow-lg border border-slate-200 space-y-6 w-full max-w-md transform transition-all"
+                className="bg-white p-6 rounded-xl shadow-lg border border-slate-200 space-y-6 w-full max-w-xl transform transition-all"
                 onClick={handleModalContentClick}
             >
                 <div className="flex justify-between items-center">
@@ -169,10 +179,10 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
                             id="absenceId"
                             name="absenceId"
                             value={formData.absenceId ?? ''}
-                            onChange={handleChange}
+                            onChange={handleAbsenceChange}
                             className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white text-slate-800 border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
                         >
-                            <option value="">Žádná</option>
+                            <option value="">Žádná (pracovní den)</option>
                             {absences.map(absence => (
                                 <option key={absence.id} value={absence.id}>{absence.name}</option>
                             ))}
@@ -180,69 +190,52 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
                     </div>
 
                     {formData.absenceId && (
+                        /* Absence amount radio buttons */
                         <div className="pt-2">
                             <label className="block text-sm font-medium text-slate-700 mb-2">Rozsah absence</label>
                             <div className="flex gap-4">
-                                <label className="flex items-center">
-                                    <input
-                                        type="radio"
-                                        name="absenceAmount"
-                                        value={1}
-                                        checked={formData.absenceAmount === 1}
-                                        onChange={handleChange}
-                                        className="focus:ring-blue-500 h-4 w-4 text-blue-600 border-slate-300"
-                                    />
+                               <label className="flex items-center">
+                                    <input type="radio" name="absenceAmount" value={1} checked={formData.absenceAmount === 1} onChange={(e) => setFormData(p => ({...p, absenceAmount: 1}))} className="focus:ring-blue-500 h-4 w-4 text-blue-600 border-slate-300" />
                                     <span className="ml-2 text-sm text-slate-700">Celý den</span>
                                 </label>
                                 <label className="flex items-center">
-                                    <input
-                                        type="radio"
-                                        name="absenceAmount"
-                                        value={0.5}
-                                        checked={formData.absenceAmount === 0.5}
-                                        onChange={handleChange}
-                                        className="focus:ring-blue-500 h-4 w-4 text-blue-600 border-slate-300"
-                                    />
+                                    <input type="radio" name="absenceAmount" value={0.5} checked={formData.absenceAmount === 0.5} onChange={(e) => setFormData(p => ({...p, absenceAmount: 0.5}))} className="focus:ring-blue-500 h-4 w-4 text-blue-600 border-slate-300" />
                                     <span className="ml-2 text-sm text-slate-700">Půl dne</span>
                                 </label>
                             </div>
                         </div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label htmlFor="startTime" className="block text-sm font-medium text-slate-700">Začátek</label>
-                            <input
-                                type="time"
-                                id="startTime"
-                                name="startTime"
-                                value={formData.startTime ?? ''}
-                                onChange={handleChange}
-                                disabled={isFullDayAbsence}
-                                className="mt-1 block w-full rounded-md bg-white text-slate-800 border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
-                            />
+                    {!formData.absenceId && (
+                        <div className="space-y-3 pt-2">
+                            {formData.entries.map((entry, index) => (
+                                <div key={entry.id} className="grid grid-cols-12 gap-2 items-center p-2 bg-slate-50/80 rounded-lg">
+                                    <input type="time" value={entry.startTime} onChange={e => handleEntryChange(entry.id, 'startTime', e.target.value)} disabled={index > 0} className="col-span-2 mt-1 block w-full rounded-md bg-white text-slate-800 border-slate-300 shadow-sm sm:text-sm disabled:bg-slate-200" />
+                                    <input type="time" value={entry.endTime} onChange={e => handleEntryChange(entry.id, 'endTime', e.target.value)} className="col-span-2 mt-1 block w-full rounded-md bg-white text-slate-800 border-slate-300 shadow-sm sm:text-sm" />
+                                    <select value={entry.projectId ?? ""} onChange={e => handleEntryChange(entry.id, 'projectId', e.target.value)} className="col-span-4 mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white text-slate-800 border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
+                                        <option value="">Bez projektu</option>
+                                        {projectOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                    <input type="text" placeholder="Poznámka..." value={entry.notes} onChange={e => handleEntryChange(entry.id, 'notes', e.target.value)} className="col-span-3 mt-1 block w-full rounded-md bg-white text-slate-800 border-slate-300 shadow-sm sm:text-sm"/>
+                                    <button type="button" onClick={() => removeEntry(entry.id)} className="col-span-1 text-slate-400 hover:text-red-500 p-1 justify-self-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
+                                    </button>
+                                </div>
+                            ))}
+                             <button type="button" onClick={addEntry} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 font-semibold rounded-lg hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition">
+                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" /></svg>
+                                Přidat další projekt / činnost
+                            </button>
                         </div>
-                        <div>
-                            <label htmlFor="endTime" className="block text-sm font-medium text-slate-700">Konec</label>
-                            <input
-                                type="time"
-                                id="endTime"
-                                name="endTime"
-                                value={formData.endTime ?? ''}
-                                onChange={handleChange}
-                                disabled={isFullDayAbsence}
-                                className="mt-1 block w-full rounded-md bg-white text-slate-800 border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
-                            />
-                        </div>
-                    </div>
-
-                    {formData.startTime && formData.endTime && timeToMinutes(formData.endTime) > timeToMinutes(formData.startTime) && (
+                    )}
+                    
+                    {formData.entries.length > 0 && (
                         <div className="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm space-y-1">
                             <div className="flex justify-between">
                                 <span className="text-slate-600">Celková doba v práci:</span>
-                                <span className="font-semibold text-slate-800">{((timeToMinutes(formData.endTime) - timeToMinutes(formData.startTime)) / 60).toFixed(2)}h</span>
+                                <span className="font-semibold text-slate-800">{(totalDuration / 60).toFixed(2)}h</span>
                             </div>
-                            {(timeToMinutes(formData.endTime) - timeToMinutes(formData.startTime)) / 60 > 4.5 && (
+                            {showLunchBreak && (
                                 <div className="flex justify-between text-yellow-700">
                                     <span className="">- Pauza na oběd:</span>
                                     <span className="font-semibold">0.50h</span>
@@ -260,66 +253,14 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
                             )}
                         </div>
                     )}
-                  
-                  <div>
-                    <label htmlFor="projectId" className="block text-sm font-medium text-slate-700">Projekt / Činnost</label>
-                    <select
-                        id="projectId"
-                        name="projectId"
-                        value={formData.projectId ?? ""}
-                        onChange={handleChange}
-                        disabled={isFullDayAbsence}
-                        className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white text-slate-800 border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
-                    >
-                        <option value="">Bez projektu</option>
-                        {projectOptions.map(project => (
-                            <option key={project.id} value={project.id}>{project.name}</option>
-                        ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label htmlFor="notes" className="block text-sm font-medium text-slate-700">Poznámky</label>
-                    <textarea
-                      id="notes"
-                      name="notes"
-                      rows={2}
-                      value={formData.notes}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-md bg-white text-slate-800 border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                    ></textarea>
-                  </div>
                 </div>
 
                 <div className="flex justify-between items-center pt-5 mt-5 border-t border-slate-200">
-                     <button
-                        type="button"
-                        onClick={handleDelete}
-                        className="py-2 px-4 border border-transparent rounded-md text-sm font-medium text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                    >
-                        Smazat záznam
-                    </button>
+                     <button type="button" onClick={handleDelete} className="py-2 px-4 border border-transparent rounded-md text-sm font-medium text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">Smazat záznam</button>
                     <div className="flex justify-end gap-3">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="py-2 px-4 border border-slate-300 rounded-md shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400"
-                        >
-                            Zrušit
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleSaveAndCopyClick}
-                            className="py-2 px-4 border border-blue-600 rounded-md shadow-sm text-sm font-medium text-blue-600 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                        >
-                            Uložit a kopírovat...
-                        </button>
-                        <button
-                            type="submit"
-                            className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                        >
-                            Uložit změny
-                        </button>
+                        <button type="button" onClick={onClose} className="py-2 px-4 border border-slate-300 rounded-md shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400">Zrušit</button>
+                        <button type="button" onClick={handleSaveAndCopyClick} className="py-2 px-4 border border-blue-600 rounded-md shadow-sm text-sm font-medium text-blue-600 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Uložit a kopírovat...</button>
+                        <button type="submit" className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Uložit změny</button>
                     </div>
                 </div>
             </form>

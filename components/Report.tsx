@@ -46,24 +46,34 @@ export const Report = React.forwardRef<HTMLDivElement, ReportProps>(({ reportDat
                         </thead>
                         <tbody className="bg-white divide-y divide-slate-200">
                             {sortedDays.map((day: WorkDay) => {
-                                const project = day.projectId ? reportData.projects.find(p => p.id === day.projectId) : null;
                                 const absence = day.absenceId ? reportData.absences.find(a => a.id === day.absenceId) : null;
                                 const [year, month, dayNum] = day.date.split('-').map(Number);
                                 const date = new Date(Date.UTC(year, month - 1, dayNum));
+                                
+                                const projectNames = day.entries
+                                    .map(e => reportData.projects.find(p => p.id === e.projectId)?.name)
+                                    .filter(Boolean)
+                                    .join(', ');
+                                    
+                                const notes = day.entries.map(e => e.notes).filter(Boolean).join('; ');
+
+                                const startTime = day.entries.length > 0 ? day.entries[0].startTime : null;
+                                const endTime = day.entries.length > 0 ? day.entries[day.entries.length - 1].endTime : null;
+
                                 return (
                                     <tr key={day.date} className={day.absenceId ? 'bg-yellow-50/50' : ''}>
                                         <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                                             {date.toLocaleDateString('cs-CZ', { timeZone: 'UTC' })}
                                         </td>
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500 font-mono">{day.startTime || '-'}</td>
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500 font-mono">{day.endTime || '-'}</td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500 font-mono">{startTime || '-'}</td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500 font-mono">{endTime || '-'}</td>
                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">{day.hours > 0 ? `${day.hours.toFixed(2)}h` : '-'}</td>
                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-orange-600 font-semibold">{day.overtime > 0 ? `${day.overtime.toFixed(2)}h` : '-'}</td>
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">{project?.name || '-'}</td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">{projectNames || '-'}</td>
                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">
                                             {absence ? `${absence.name} ${day.absenceAmount === 0.5 ? '(1/2)' : ''}` : '-'}
                                         </td>
-                                        <td className="px-4 py-4 text-sm text-slate-500 max-w-xs truncate">{day.notes || '-'}</td>
+                                        <td className="px-4 py-4 text-sm text-slate-500 max-w-xs truncate">{notes || '-'}</td>
                                     </tr>
                                 )
                             })}
