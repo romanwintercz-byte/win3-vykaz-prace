@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Absence } from '../types';
+import { Absence } from '@/types';
 
 interface AbsenceManagerProps {
     isOpen: boolean;
@@ -11,7 +11,7 @@ interface AbsenceManagerProps {
 
 export const AbsenceManager: React.FC<AbsenceManagerProps> = ({ isOpen, onClose, absences, onAddAbsence, onDeleteAbsence }) => {
     const [newAbsenceName, setNewAbsenceName] = useState('');
-
+    
     const handleAddAbsence = (e: React.FormEvent) => {
         e.preventDefault();
         if (newAbsenceName.trim()) {
@@ -25,7 +25,7 @@ export const AbsenceManager: React.FC<AbsenceManagerProps> = ({ isOpen, onClose,
     }
 
     const handleModalContentClick = (e: React.MouseEvent) => e.stopPropagation();
-    
+
     return (
         <div
             className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity"

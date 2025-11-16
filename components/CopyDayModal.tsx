@@ -1,21 +1,20 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { WorkDay } from '../types';
+import { DayData } from '@/types';
 
 interface CopyDayModalProps {
-  sourceData: WorkDay;
-  currentDate: Date;
-  holidays: Set<string>;
-  onCopy: (targetDates: string[], sourceData: WorkDay) => void;
-  onClose: () => void;
+    sourceData: { date: string, data: DayData };
+    currentDate: Date;
+    holidays: Set<string>;
+    onCopy: (targetDates: string[], sourceData: DayData) => void;
+    onClose: () => void;
 }
 
-// Helper to get date string in YYYY-MM-DD format from a UTC date
 const toDateString = (day: Date): string => day.toISOString().split('T')[0];
 
 export const CopyDayModal: React.FC<CopyDayModalProps> = ({ sourceData, currentDate, holidays, onCopy, onClose }) => {
     const [selectedDays, setSelectedDays] = useState<Set<string>>(new Set());
-
-    const { daysInMonth, year, month } = useMemo(() => {
+    
+    const { daysInMonth } = useMemo(() => {
         const year = currentDate.getFullYear();
         const month = currentDate.getMonth();
         const dateList: Date[] = [];
@@ -27,7 +26,7 @@ export const CopyDayModal: React.FC<CopyDayModalProps> = ({ sourceData, currentD
     }, [currentDate]);
 
     const handleToggleDay = useCallback((dateString: string) => {
-        if (dateString === sourceData.date) return; // Cannot select source day
+        if (dateString === sourceData.date) return;
         setSelectedDays(prev => {
             const newSet = new Set(prev);
             if (newSet.has(dateString)) {
@@ -42,10 +41,9 @@ export const CopyDayModal: React.FC<CopyDayModalProps> = ({ sourceData, currentD
     const handleSelectWorkdays = () => {
         const workdays = new Set<string>();
         daysInMonth.forEach(day => {
-            const dayOfWeek = day.getUTCDay(); // Use getUTCDay for UTC date
+            const dayOfWeek = day.getUTCDay();
             const dateString = toDateString(day);
             const isHoliday = holidays.has(dateString);
-            // In JS, Sunday is 0 and Saturday is 6.
             if (dayOfWeek !== 0 && dayOfWeek !== 6 && dateString !== sourceData.date && !isHoliday) {
                 workdays.add(dateString);
             }
@@ -59,15 +57,14 @@ export const CopyDayModal: React.FC<CopyDayModalProps> = ({ sourceData, currentD
 
     const handleSubmit = () => {
         if (selectedDays.size > 0) {
-            onCopy(Array.from(selectedDays), sourceData);
+            onCopy(Array.from(selectedDays), sourceData.data);
         }
     };
-    
+
     const [sourceYear, sourceMonth, sourceDay] = sourceData.date.split('-').map(Number);
     const sourceDateFormatted = new Date(Date.UTC(sourceYear, sourceMonth - 1, sourceDay))
         .toLocaleDateString('cs-CZ', { day: 'numeric', month: 'long', timeZone: 'UTC' });
 
-    // Stop propagation to prevent closing modal when clicking inside
     const handleModalContentClick = (e: React.MouseEvent) => e.stopPropagation();
 
     return (
@@ -81,7 +78,7 @@ export const CopyDayModal: React.FC<CopyDayModalProps> = ({ sourceData, currentD
             >
                 <div className="flex justify-between items-center">
                     <h2 className="text-xl font-bold text-slate-900">
-                        Kopírovat záznam z <span className="text-blue-600">{sourceDateFormatted}</span>
+                        Kopírovat záznamy z <span className="text-blue-600">{sourceDateFormatted}</span>
                     </h2>
                     <button type="button" onClick={onClose} className="p-1 rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>

@@ -1,5 +1,6 @@
-import React, { useState, useRef } from 'react';
-import { Employee, Project, Absence, WorkDay, FullBackup, EmployeeBackup } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+// Fix: Replaced incorrect 'WorkDay' type with 'DayData' to match the application's data structure.
+import { Employee, Project, Absence, DayData, FullBackup, EmployeeBackup } from '@/types';
 
 interface DataManagerProps {
     isOpen: boolean;
@@ -7,13 +8,23 @@ interface DataManagerProps {
     employees: Employee[];
     projects: Project[];
     absences: Absence[];
-    allWorkData: Record<string, Record<string, WorkDay>>;
+    allWorkData: Record<string, Record<string, DayData>>;
     onImportData: (jsonString: string) => void;
 }
 
 export const DataManager: React.FC<DataManagerProps> = ({ isOpen, onClose, employees, projects, absences, allWorkData, onImportData }) => {
-    const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(employees.find(e => !e.archived)?.id || '');
+    const activeEmployees = employees.filter(e => !e.archived);
+    const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>(activeEmployees[0]?.id || '');
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (isOpen) {
+            const firstActive = employees.find(e => !e.archived);
+            if(firstActive) {
+                setSelectedEmployeeId(firstActive.id);
+            }
+        }
+    }, [isOpen, employees]);
 
     const handleExportAllData = () => {
         const data: FullBackup = {
@@ -80,14 +91,13 @@ export const DataManager: React.FC<DataManagerProps> = ({ isOpen, onClose, emplo
                 alert("Nepodařilo se přečíst soubor.");
             };
             reader.readAsText(file);
-            // Reset file input value to allow re-uploading the same file
-            event.target.value = '';
+            if (event.target) {
+                event.target.value = '';
+            }
         }
     };
-    
-    if (!isOpen) return null;
 
-    const activeEmployees = employees.filter(e => !e.archived);
+    if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 transition-opacity" onClick={onClose}>
@@ -100,7 +110,7 @@ export const DataManager: React.FC<DataManagerProps> = ({ isOpen, onClose, emplo
                 <div className="space-y-6">
                     <details className="bg-slate-50 border border-slate-200 rounded-lg p-3">
                         <summary className="font-semibold text-slate-700 cursor-pointer">Nápověda: Jaký je rozdíl mezi typy záloh?</summary>
-                        <div className="mt-2 text-sm text-slate-600 space-y-2 prose prose-sm">
+                        <div className="mt-2 text-sm text-slate-600 space-y-2 prose prose-sm max-w-none">
                             <p><strong>Kompletní záloha (Exportovat všechna data):</strong></p>
                             <ul>
                                 <li>Vytvoří soubor s <strong>veškerými daty</strong> aplikace: všichni zaměstnanci, všechny projekty, absence a kompletní historie výkazů.</li>
@@ -124,7 +134,7 @@ export const DataManager: React.FC<DataManagerProps> = ({ isOpen, onClose, emplo
                             </button>
                             <div className="flex-1 flex items-center gap-2 border border-slate-300 rounded-lg p-2">
                                 <select value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)} className="flex-grow bg-white text-slate-800 border-0 focus:ring-0 rounded-md">
-                                    {activeEmployees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                                    {activeEmployees.length > 0 ? activeEmployees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>) : <option disabled>Žádní aktivní zaměstnanci</option>}
                                 </select>
                                 <button onClick={handleExportEmployeeData} disabled={!selectedEmployeeId} className="px-3 py-1 bg-slate-200 text-slate-700 font-semibold rounded-md hover:bg-slate-300 disabled:bg-slate-100 disabled:text-slate-400 transition">
                                     Export
@@ -145,7 +155,6 @@ export const DataManager: React.FC<DataManagerProps> = ({ isOpen, onClose, emplo
         </div>
     );
 };
-
 // --- ICONS ---
 const CloseIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>;
 const DownloadIcon: React.FC = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>;
