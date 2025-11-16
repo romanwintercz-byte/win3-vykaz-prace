@@ -1,17 +1,16 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { GoogleGenAI } from "@google/genai";
-import { Header } from '@/components/Header';
-import { TimesheetView } from '@/components/TimesheetView';
-import { Summary } from '@/components/Summary';
-import { Report } from '@/components/Report';
-import { ProjectManager } from '@/components/ProjectManager';
-import { AbsenceManager } from '@/components/AbsenceManager';
-import { EmployeeManager } from '@/components/EmployeeManager';
-import { DataManager } from '@/components/DataManager';
-import { DayData, DayEntry, Project, Absence, Employee, FullBackup, EmployeeBackup, ReportDay } from '@/types';
-import { minutesToTime, timeToMinutes } from '@/utils/timeUtils';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { Header } from './components/Header';
+import { TimesheetView } from './components/TimesheetView';
+import { Summary } from './components/Summary';
+import { Report } from './components/Report';
+import { ProjectManager } from './components/ProjectManager';
+import { AbsenceManager } from './components/AbsenceManager';
+import { EmployeeManager } from './components/EmployeeManager';
+import { DataManager } from './components/DataManager';
+import { WorkDay, Project, Absence, Employee, FullBackup, EmployeeBackup } from './types';
 
 // --- Holiday Calculation Logic ---
+// Function to calculate Easter Sunday using the Gregorian algorithm (Meeus/Jones/Butcher)
 const getEasterSunday = (year: number): Date => {
     const a = year % 19;
     const b = Math.floor(year / 100);
@@ -30,12 +29,13 @@ const getEasterSunday = (year: number): Date => {
     return new Date(Date.UTC(year, month - 1, day));
 };
 
+// Cache holidays by year
 const holidayCache: { [year: number]: { dates: Date[], strings: Set<string> } } = {};
 const getCzechPublicHolidays = (year: number): { dates: Date[], strings: Set<string> } => {
     if (holidayCache[year]) {
         return holidayCache[year];
     }
-    
+
     const easterSunday = getEasterSunday(year);
     const goodFriday = new Date(easterSunday);
     goodFriday.setUTCDate(easterSunday.getUTCDate() - 2);
@@ -43,13 +43,13 @@ const getCzechPublicHolidays = (year: number): { dates: Date[], strings: Set<str
     easterMonday.setUTCDate(easterSunday.getUTCDate() + 1);
 
     const holidays = [
-        new Date(Date.UTC(year, 0, 1)),   // New Year's Day
-        new Date(Date.UTC(year, 4, 1)),   // Labour Day
-        new Date(Date.UTC(year, 4, 8)),   // Liberation Day
-        new Date(Date.UTC(year, 6, 5)),   // Saints Cyril and Methodius Day
-        new Date(Date.UTC(year, 6, 6)),   // Jan Hus Day
-        new Date(Date.UTC(year, 8, 28)),  // St. Wenceslas Day (Czech Statehood Day)
-        new Date(Date.UTC(year, 9, 28)),  // Independent Czechoslovak State Day
+        new Date(Date.UTC(year, 0, 1)), // New Year's Day
+        new Date(Date.UTC(year, 4, 1)), // Labour Day
+        new Date(Date.UTC(year, 4, 8)), // Liberation Day
+        new Date(Date.UTC(year, 6, 5)), // Saints Cyril and Methodius Day
+        new Date(Date.UTC(year, 6, 6)), // Jan Hus Day
+        new Date(Date.UTC(year, 8, 28)), // St. Wenceslas Day (Czech Statehood Day)
+        new Date(Date.UTC(year, 9, 28)), // Independent Czechoslovak State Day
         new Date(Date.UTC(year, 10, 17)), // Struggle for Freedom and Democracy Day
         new Date(Date.UTC(year, 11, 24)), // Christmas Eve
         new Date(Date.UTC(year, 11, 25)), // Christmas Day
@@ -65,24 +65,27 @@ const getCzechPublicHolidays = (year: number): { dates: Date[], strings: Set<str
         .sort((a, b) => a.getTime() - b.getTime());
 
     const toDateString = (date: Date): string => date.toISOString().split('T')[0];
-
     const holidayStrings = new Set<string>();
-    uniqueHolidays.forEach(d => holidayStrings.add(toDateString(d)));
+    uniqueHolidays.forEach(d => {
+        holidayStrings.add(toDateString(d));
+    });
 
     const result = { dates: uniqueHolidays, strings: holidayStrings };
     holidayCache[year] = result;
     return result;
 };
 
-const isDayEmpty = (dayData?: DayData): boolean => {
-    return !dayData || dayData.length === 0;
+const isDayEmpty = (day: WorkDay): boolean => {
+    return day.hours === 0 && day.overtime === 0 && day.projectId === null && day.absenceId === null && day.absenceAmount === 0 && day.notes === '' && day.startTime === null && day.endTime === null;
 };
 
+// --- Component ---
 const initialProjects: Project[] = [
     { id: 'proj-1', name: 'Interní systém', color: '#0088FE', archived: false },
     { id: 'proj-2', name: 'Web pro klienta A', color: '#00C49F', archived: false },
     { id: 'proj-3', name: 'Mobilní aplikace', color: '#FFBB28', archived: false },
 ];
+
 const initialAbsences: Absence[] = [
     { id: 'absence-1', name: 'Dovolená' },
     { id: 'absence-2', name: 'Nemoc' },
@@ -94,27 +97,28 @@ const initialAbsences: Absence[] = [
     { id: 'absence-9', name: '60% (překážka v práci)' },
     { id: 'absence-8', name: 'Jiné' },
 ];
+
 const initialEmployees: Employee[] = [
     { id: 'emp-1', name: 'Jan Novák', archived: false }
 ];
 
 const App: React.FC = () => {
     const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
-    const [activeEmployeeId, setActiveEmployeeId] = useState<string | null>(initialEmployees.find(e => !e.archived)?.id || null);
+    const [activeEmployeeId, setActiveEmployeeId] = useState<string | null>(initialEmployees[0]?.id || null);
     const [currentDate, setCurrentDate] = useState<Date>(new Date());
-    const [allWorkData, setAllWorkData] = useState<Record<string, Record<string, DayData>>>({
+    const [allWorkData, setAllWorkData] = useState<Record<string, Record<string, WorkDay>>>({
         'emp-1': {}
     });
     const [projects, setProjects] = useState<Project[]>(initialProjects);
     const [absences, setAbsences] = useState<Absence[]>(initialAbsences);
+
     const [showReport, setShowReport] = useState<boolean>(false);
     const [isProjectManagerOpen, setIsProjectManagerOpen] = useState<boolean>(false);
     const [isAbsenceManagerOpen, setIsAbsenceManagerOpen] = useState<boolean>(false);
     const [isEmployeeManagerOpen, setIsEmployeeManagerOpen] = useState<boolean>(false);
     const [isDataManagerOpen, setIsDataManagerOpen] = useState<boolean>(false);
-    const reportRef = useRef<HTMLDivElement>(null);
 
-    const ai = useMemo(() => new GoogleGenAI({ apiKey: process.env.API_KEY as string }), []);
+    const reportRef = useRef<HTMLDivElement>(null);
 
     const activeEmployee = useMemo(() => employees.find(e => e.id === activeEmployeeId), [employees, activeEmployeeId]);
     const activeWorkData = useMemo(() => allWorkData[activeEmployeeId || ''] || {}, [allWorkData, activeEmployeeId]);
@@ -122,7 +126,7 @@ const App: React.FC = () => {
     const publicHolidayAbsenceId = useMemo(() =>
         absences.find(a => a.name.toLowerCase().includes('státní svátek'))?.id || null
     , [absences]);
-    
+
     const holidaysForYear = useMemo(() => {
         const year = currentDate.getFullYear();
         return getCzechPublicHolidays(year);
@@ -132,35 +136,37 @@ const App: React.FC = () => {
         if (!publicHolidayAbsenceId || !activeEmployeeId) return;
 
         const toDateString = (date: Date): string => date.toISOString().split('T')[0];
-        const holidaysInMonth = holidaysForYear.dates.filter(holiday => holiday.getUTCMonth() === currentDate.getMonth());
+        const holidaysInMonth = holidaysForYear.dates.filter(
+            (holiday) => holiday.getUTCMonth() === currentDate.getMonth()
+        );
 
-        const holidayUpdates: Record<string, DayData> = {};
+        const holidayUpdates: Record<string, WorkDay> = {};
         holidaysInMonth.forEach(holiday => {
             const dateString = toDateString(holiday);
             const existingData = activeWorkData[dateString];
-
-            if (isDayEmpty(existingData)) {
-                holidayUpdates[dateString] = [{
-                    id: `holiday-${Date.now()}`,
-                    type: 'absence',
-                    startTime: "08:00",
-                    endTime: "16:00",
+            if (!existingData || isDayEmpty(existingData)) {
+                holidayUpdates[dateString] = {
+                    date: dateString,
+                    startTime: null,
+                    endTime: null,
+                    hours: 0,
+                    overtime: 0,
                     projectId: null,
                     absenceId: publicHolidayAbsenceId,
-                    notes: 'Státní svátek',
-                    isAuto: true,
-                }];
+                    absenceAmount: 1,
+                    notes: 'Státní svátek'
+                };
             }
         });
 
         if (Object.keys(holidayUpdates).length > 0) {
-            setAllWorkData(prev => ({ 
-                ...prev, 
+            setAllWorkData(prev => ({
+                ...prev,
                 [activeEmployeeId]: { ...prev[activeEmployeeId], ...holidayUpdates }
             }));
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentDate, holidaysForYear, publicHolidayAbsenceId, activeEmployeeId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentDate, holidaysForYear.dates, publicHolidayAbsenceId, activeEmployeeId]);
 
     useEffect(() => {
         if (showReport && reportRef.current) {
@@ -171,45 +177,36 @@ const App: React.FC = () => {
         }
     }, [showReport]);
 
-    const currentMonthReportDays = useMemo((): ReportDay[] => {
-        return (Object.entries(activeWorkData) as [string, DayData][])
-            .filter(([date]) => {
-                const dayDate = new Date(date);
-                return dayDate.getUTCMonth() === currentDate.getMonth() && dayDate.getUTCFullYear() === currentDate.getFullYear();
-            })
-            .map(([date, entries]) => ({ date, entries: entries || [] }));
+    const currentMonthWorkDays = useMemo(() => {
+        return Object.values(activeWorkData).filter((d: WorkDay) => {
+            const dayDate = new Date(d.date);
+            return dayDate.getUTCMonth() === currentDate.getMonth() && dayDate.getUTCFullYear() === currentDate.getFullYear();
+        });
     }, [activeWorkData, currentDate]);
 
     const handleDateChange = (newDate: Date) => {
         setCurrentDate(newDate);
         setShowReport(false);
     };
-    
-    const handleSetDayData = (date: string, dayData: DayData) => {
+
+    const handleUpdateDay = useCallback((dayData: WorkDay) => {
         if (!activeEmployeeId) return;
-
-        // Filter out empty entries before saving
-        const cleanedData = dayData.filter(entry => entry.startTime && entry.endTime);
-
         setAllWorkData(prev => ({
             ...prev,
-            [activeEmployeeId]: { 
-                ...prev[activeEmployeeId], 
-                [date]: cleanedData
-            }
+            [activeEmployeeId]: { ...prev[activeEmployeeId], [dayData.date]: dayData }
         }));
-    };
-    
-    const handleCopyDays = (targetDates: string[], sourceData: DayData) => {
+    }, [activeEmployeeId]);
+
+    const handleUpdateMultipleDays = useCallback((daysData: WorkDay[]) => {
         if (!activeEmployeeId) return;
         setAllWorkData(prev => {
             const newEmployeeData = { ...prev[activeEmployeeId] };
-            targetDates.forEach(date => {
-                newEmployeeData[date] = sourceData.map(entry => ({...entry, id: `entry-${Date.now()}-${Math.random()}`}));
+            daysData.forEach(day => {
+                newEmployeeData[day.date] = day;
             });
             return { ...prev, [activeEmployeeId]: newEmployeeData };
         });
-    };
+    }, [activeEmployeeId]);
 
     const handleAddProject = (name: string, color: string) => {
         const newProject: Project = {
@@ -220,7 +217,7 @@ const App: React.FC = () => {
         };
         setProjects(prev => [...prev, newProject]);
     };
-    
+
     const handleUpdateProject = (updatedProject: Project) => {
         setProjects(prev => prev.map(p => p.id === updatedProject.id ? updatedProject : p));
     };
@@ -237,24 +234,16 @@ const App: React.FC = () => {
         setAbsences(prev => [...prev, newAbsence]);
     };
 
-    const handleDeleteAbsence = (absenceId: string) => {
-        if (window.confirm("Opravdu si přejete smazat tento typ absence? Bude odstraněn ze všech existujících záznamů.")) {
-            setAbsences(prev => prev.filter(a => a.id !== absenceId));
-            setAllWorkData(prev => {
-                const newData = { ...prev };
-                Object.keys(newData).forEach(empId => {
-                    Object.keys(newData[empId]).forEach(date => {
-                        const dayEntries = newData[empId][date];
-                        if (dayEntries) {
-                            newData[empId][date] = dayEntries.filter(entry => entry.absenceId !== absenceId);
-                        }
-                    });
-                });
-                return newData;
-            });
+    const handleDeleteAbsence = (id: string) => {
+        if (publicHolidayAbsenceId === id) {
+            alert("Nelze smazat absenci 'Státní svátek', je používána pro automatické vyplňování.");
+            return;
+        }
+        if (window.confirm("Opravdu si přejete smazat tento typ absence? Záznamy s touto absencí mohou přestat být správně zobrazovány.")) {
+            setAbsences(prev => prev.filter(a => a.id !== id));
         }
     };
-
+    
     const handleAddEmployee = (name: string) => {
         const newEmployee: Employee = {
             id: `emp-${Date.now()}`,
@@ -269,7 +258,7 @@ const App: React.FC = () => {
     const handleUpdateEmployee = (updatedEmployee: Employee) => {
         setEmployees(prev => prev.map(e => e.id === updatedEmployee.id ? updatedEmployee : e));
     };
-    
+
     const handleArchiveEmployee = (employeeId: string, isArchived: boolean) => {
         setEmployees(prev => prev.map(e => e.id === employeeId ? { ...e, archived: isArchived } : e));
         if (isArchived && activeEmployeeId === employeeId) {
@@ -277,7 +266,7 @@ const App: React.FC = () => {
             setActiveEmployeeId(newActive?.id || null);
         }
     };
-    
+
     const handleToggleReport = () => {
         if (!activeEmployeeId) {
             alert("Prosím, vyberte nebo vytvořte zaměstnance.");
@@ -294,46 +283,46 @@ const App: React.FC = () => {
     const handleImportData = (jsonString: string) => {
         try {
             const data: FullBackup | EmployeeBackup = JSON.parse(jsonString);
-            
+
             if (data.type === 'full_backup') {
                 const backupData = data as FullBackup;
                 if (!backupData.employees || !backupData.projects || !backupData.absences || !backupData.allWorkData) {
-                  throw new Error("Soubor s kompletní zálohou nemá správnou strukturu.");
+                    throw new Error("Soubor s kompletní zálohou nemá správnou strukturu.");
                 }
                 if (window.confirm("Opravdu si přejete importovat kompletní zálohu? Všechna stávající data v aplikaci budou přepsána daty ze souboru. Tuto akci nelze vrátit zpět.")) {
-                  setEmployees(backupData.employees);
-                  setProjects(backupData.projects);
-                  setAbsences(backupData.absences);
-                  setAllWorkData(backupData.allWorkData);
-                  const firstActiveEmployee = backupData.employees.find(e => !e.archived);
-                  setActiveEmployeeId(firstActiveEmployee?.id || null);
-                  alert("Data byla úspěšně importována.");
-                  setIsDataManagerOpen(false);
+                    setEmployees(backupData.employees);
+                    setProjects(backupData.projects);
+                    setAbsences(backupData.absences);
+                    setAllWorkData(backupData.allWorkData);
+                    const firstActiveEmployee = backupData.employees.find(e => !e.archived);
+                    setActiveEmployeeId(firstActiveEmployee?.id || null);
+                    alert("Data byla úspěšně importována.");
+                    setIsDataManagerOpen(false);
                 }
             } else if (data.type === 'employee_data') {
                 const employeeData = data as EmployeeBackup;
-                 if (!employeeData.employee || !employeeData.workData) {
-                  throw new Error("Soubor s daty zaměstnance nemá správnou strukturu.");
+                if (!employeeData.employee || !employeeData.workData) {
+                    throw new Error("Soubor s daty zaměstnance nemá správnou strukturu.");
                 }
                 const { employee: importedEmployee, workData: importedWorkData } = employeeData;
+                
                 const existingEmployee = employees.find(e => e.id === importedEmployee.id);
-
                 if (existingEmployee) {
-                  if (window.confirm(`Chystáte se importovat a sloučit data pro zaměstnance ${existingEmployee.name}. Existující záznamy pro stejné dny budou přepsány novými. Přejete si pokračovat?`)) {
-                    const currentEmployeeData = allWorkData[existingEmployee.id] || {};
-                    const mergedData = { ...currentEmployeeData, ...importedWorkData };
-                    setAllWorkData(prev => ({ ...prev, [existingEmployee.id]: mergedData }));
-                    alert("Data zaměstnance byla úspěšně sloučena.");
-                    setIsDataManagerOpen(false);
-                  }
+                    if (window.confirm(`Chystáte se importovat a sloučit data pro zaměstnance "${existingEmployee.name}". Existující záznamy pro stejné dny budou přepsány novými. Přejete si pokračovat?`)) {
+                        const currentEmployeeData = allWorkData[existingEmployee.id] || {};
+                        const mergedData = { ...currentEmployeeData, ...importedWorkData };
+                        setAllWorkData(prev => ({ ...prev, [existingEmployee.id]: mergedData }));
+                        alert("Data zaměstnance byla úspěšně sloučena.");
+                        setIsDataManagerOpen(false);
+                    }
                 } else {
-                  if (window.confirm(`Zaměstnanec ${importedEmployee.name} nebyl v aplikaci nalezen. Přejete si ho založit jako nového a importovat jeho data?`)) {
-                    setEmployees(prev => [...prev, importedEmployee]);
-                    setAllWorkData(prev => ({ ...prev, [importedEmployee.id]: importedWorkData }));
-                    setActiveEmployeeId(importedEmployee.id);
-                    alert("Nový zaměstnanec byl vytvořen a data byla importována.");
-                    setIsDataManagerOpen(false);
-                  }
+                    if (window.confirm(`Zaměstnanec "${importedEmployee.name}" nebyl v aplikaci nalezen. Přejete si ho založit jako nového a importovat jeho data?`)) {
+                        setEmployees(prev => [...prev, importedEmployee]);
+                        setAllWorkData(prev => ({ ...prev, [importedEmployee.id]: importedWorkData }));
+                        setActiveEmployeeId(importedEmployee.id);
+                        alert("Nový zaměstnanec byl vytvořen a data byla importována.");
+                        setIsDataManagerOpen(false);
+                    }
                 }
             } else {
                 throw new Error("Neznámý typ souboru pro import.");
@@ -363,15 +352,15 @@ const App: React.FC = () => {
                 
                 <main className="mt-8 grid grid-cols-1 gap-8">
                     {activeEmployeeId ? (
-                        <TimesheetView 
+                        <TimesheetView
                             key={activeEmployeeId} // Force re-render on employee change
                             currentDate={currentDate}
                             workData={activeWorkData}
                             projects={projects}
                             absences={absences}
                             holidays={holidaysForYear.strings}
-                            onSetDayData={handleSetDayData}
-                            onCopyDays={handleCopyDays}
+                            onUpdateDay={handleUpdateDay}
+                            onUpdateMultipleDays={handleUpdateMultipleDays}
                         />
                     ) : (
                         <div className="text-center py-10 bg-white rounded-xl shadow-sm border border-slate-200">
@@ -384,17 +373,16 @@ const App: React.FC = () => {
                 {activeEmployeeId && <Summary workData={activeWorkData} currentDate={currentDate} projects={projects} absences={absences} holidays={holidaysForYear.strings} publicHolidayAbsenceId={publicHolidayAbsenceId} />}
 
                 {showReport && activeEmployee && (
-                    <Report 
-                        ref={reportRef}
-                        ai={ai}
-                        reportData={{
-                            employeeName: activeEmployee.name,
-                            month: currentDate.toLocaleString('cs-CZ', { month: 'long', year: 'numeric' }),
-                            days: currentMonthReportDays,
-                            projects: projects,
-                            absences: absences
-                        }}
-                    />
+                  <Report 
+                    ref={reportRef}
+                    reportData={{
+                      employeeName: activeEmployee.name,
+                      month: currentDate.toLocaleString('cs-CZ', { month: 'long', year: 'numeric' }),
+                      days: currentMonthWorkDays,
+                      projects: projects,
+                      absences: absences
+                    }}
+                  />
                 )}
 
                 <ProjectManager 
@@ -421,13 +409,13 @@ const App: React.FC = () => {
                     onArchiveEmployee={handleArchiveEmployee}
                 />
                 <DataManager
-                    isOpen={isDataManagerOpen}
-                    onClose={() => setIsDataManagerOpen(false)}
-                    employees={employees}
-                    projects={projects}
-                    absences={absences}
-                    allWorkData={allWorkData}
-                    onImportData={handleImportData}
+                  isOpen={isDataManagerOpen}
+                  onClose={() => setIsDataManagerOpen(false)}
+                  employees={employees}
+                  projects={projects}
+                  absences={absences}
+                  allWorkData={allWorkData}
+                  onImportData={handleImportData}
                 />
             </div>
         </div>

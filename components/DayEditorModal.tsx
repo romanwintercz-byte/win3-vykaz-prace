@@ -1,16 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Project, Absence } from '@/types';
-
-// Fix: Define the missing WorkDay type locally as it's an obsolete type not used elsewhere in the application.
-interface WorkDay {
-    date: string;
-    hours: number;
-    overtime: number;
-    projectId: string | null;
-    absenceId: string | null;
-    absenceAmount: number;
-    notes: string;
-}
+import { WorkDay, Project, Absence } from '../types';
 
 interface DayEditorModalProps {
     dayData: WorkDay;
@@ -21,6 +10,12 @@ interface DayEditorModalProps {
     absences: Absence[];
 }
 
+const timeToMinutes = (time: string | null): number => {
+    if (!time) return 0;
+    const [hours, minutes] = time.split(':').map(Number);
+    return hours * 60 + minutes;
+};
+
 export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave, onSaveAndCopy, onClose, projects, absences }) => {
     const [formData, setFormData] = useState<WorkDay>(dayData);
     const isFullDayAbsence = !!formData.absenceId && formData.absenceAmount === 1;
@@ -28,7 +23,6 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
     const projectOptions = useMemo(() => {
         const activeProjects = projects.filter(p => !p.archived);
         const selectedProject = formData.projectId ? projects.find(p => p.id === formData.projectId) : null;
-        
         if (selectedProject && selectedProject.archived) {
             return [selectedProject, ...activeProjects];
         }
@@ -38,18 +32,55 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
     useEffect(() => {
         setFormData(dayData);
     }, [dayData]);
+    
+    useEffect(() => {
+        const startMinutes = timeToMinutes(formData.startTime);
+        const endMinutes = timeToMinutes(formData.endTime);
+
+        if (!formData.startTime || !formData.endTime || endMinutes <= startMinutes) {
+            if (formData.hours !== 0 || formData.overtime !== 0) {
+                setFormData(prev => ({ ...prev, hours: 0, overtime: 0 }));
+            }
+            return;
+        }
+
+        let durationMinutes = endMinutes - startMinutes;
+        const durationHours = durationMinutes / 60;
+
+        if (durationHours > 4.5) {
+            durationMinutes -= 30;
+        }
+
+        const totalWorkHours = durationMinutes / 60;
+        
+        const newHours = Math.min(totalWorkHours, 8);
+        const newOvertime = Math.max(0, totalWorkHours - 8);
+
+        const roundedHours = parseFloat(newHours.toFixed(2));
+        const roundedOvertime = parseFloat(newOvertime.toFixed(2));
+
+        if (formData.hours !== roundedHours || formData.overtime !== roundedOvertime) {
+            setFormData(prev => ({
+                ...prev,
+                hours: roundedHours,
+                overtime: roundedOvertime,
+            }));
+        }
+    }, [formData.startTime, formData.endTime, formData.hours, formData.overtime]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         
         setFormData(prev => {
             const newState = { ...prev };
-
+            
             if (name === 'absenceId') {
                 const newAbsenceId = value === "" ? null : value;
                 newState.absenceId = newAbsenceId;
                 if (newAbsenceId) {
                     newState.absenceAmount = 1;
+                    newState.startTime = null;
+                    newState.endTime = null;
                     newState.hours = 0;
                     newState.overtime = 0;
                     newState.projectId = null;
@@ -60,15 +91,20 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
                 const newAmount = Number(value);
                 newState.absenceAmount = newAmount;
                 if (newAmount === 1) {
+                    newState.startTime = null;
+                    newState.endTime = null;
                     newState.hours = 0;
                     newState.overtime = 0;
                     newState.projectId = null;
                 }
-            } else if (name === 'projectId') {
+            } else if (name === 'startTime' || name === 'endTime') {
+                 newState[name] = value === '' ? null : value;
+                 if (value) newState.absenceId = null; // Clear absence if time is entered
+            }
+            else if (name === 'projectId') {
                 newState.projectId = value === "" ? null : value;
             } else {
-                const numValue = name === 'hours' || name === 'overtime' ? Number(value) : value;
-                (newState as any)[name] = numValue;
+                (newState as any)[name] = value;
             }
             return newState;
         });
@@ -83,6 +119,8 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
         if (window.confirm('Opravdu si přejete smazat tento záznam? Všechna data pro tento den budou odstraněna.')) {
             onSave({
                 date: formData.date,
+                startTime: null,
+                endTime: null,
                 hours: 0,
                 overtime: 0,
                 projectId: null,
@@ -170,68 +208,89 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
                             </div>
                         </div>
                     )}
-                  
-                    <div>
-                        <label htmlFor="projectId" className="block text-sm font-medium text-slate-700">Projekt / Činnost</label>
-                        <select
-                            id="projectId"
-                            name="projectId"
-                            value={formData.projectId ?? ""}
-                            onChange={handleChange}
-                            disabled={isFullDayAbsence}
-                            className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white text-slate-800 border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
-                        >
-                            <option value="">Bez projektu</option>
-                            {projectOptions.map(project => (
-                                <option key={project.id} value={project.id}>{project.name}</option>
-                            ))}
-                        </select>
-                    </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label htmlFor="hours" className="block text-sm font-medium text-slate-700">Pracovní doba (h)</label>
+                            <label htmlFor="startTime" className="block text-sm font-medium text-slate-700">Začátek</label>
                             <input
-                                type="number"
-                                id="hours"
-                                name="hours"
-                                value={formData.hours}
+                                type="time"
+                                id="startTime"
+                                name="startTime"
+                                value={formData.startTime ?? ''}
                                 onChange={handleChange}
                                 disabled={isFullDayAbsence}
-                                min="0"
-                                step="0.5"
                                 className="mt-1 block w-full rounded-md bg-white text-slate-800 border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                             />
                         </div>
                         <div>
-                            <label htmlFor="overtime" className="block text-sm font-medium text-slate-700">Přesčas (h)</label>
+                            <label htmlFor="endTime" className="block text-sm font-medium text-slate-700">Konec</label>
                             <input
-                                type="number"
-                                id="overtime"
-                                name="overtime"
-                                value={formData.overtime}
+                                type="time"
+                                id="endTime"
+                                name="endTime"
+                                value={formData.endTime ?? ''}
                                 onChange={handleChange}
                                 disabled={isFullDayAbsence}
-                                min="0"
-                                step="0.5"
                                 className="mt-1 block w-full rounded-md bg-white text-slate-800 border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
                             />
                         </div>
                     </div>
 
-                    <div>
-                        <label htmlFor="notes" className="block text-sm font-medium text-slate-700">Poznámky</label>
-                        <textarea
-                            id="notes"
-                            name="notes"
-                            rows={3}
-                            value={formData.notes}
-                            onChange={handleChange}
-                            className="mt-1 block w-full rounded-md bg-white text-slate-800 border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                        ></textarea>
-                    </div>
+                    {formData.startTime && formData.endTime && timeToMinutes(formData.endTime) > timeToMinutes(formData.startTime) && (
+                        <div className="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm space-y-1">
+                            <div className="flex justify-between">
+                                <span className="text-slate-600">Celková doba v práci:</span>
+                                <span className="font-semibold text-slate-800">{((timeToMinutes(formData.endTime) - timeToMinutes(formData.startTime)) / 60).toFixed(2)}h</span>
+                            </div>
+                            {(timeToMinutes(formData.endTime) - timeToMinutes(formData.startTime)) / 60 > 4.5 && (
+                                <div className="flex justify-between text-yellow-700">
+                                    <span className="">- Pauza na oběd:</span>
+                                    <span className="font-semibold">0.50h</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between border-t border-slate-200 pt-1 mt-1">
+                                <span className="font-bold text-slate-800">Odpracováno celkem:</span>
+                                <span className="font-bold text-slate-900">{(formData.hours + formData.overtime).toFixed(2)}h</span>
+                            </div>
+                            {formData.overtime > 0 && (
+                                <div className="flex justify-between text-orange-600">
+                                    <span className="">z toho přesčas:</span>
+                                    <span className="font-semibold">{formData.overtime.toFixed(2)}h</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                  
+                  <div>
+                    <label htmlFor="projectId" className="block text-sm font-medium text-slate-700">Projekt / Činnost</label>
+                    <select
+                        id="projectId"
+                        name="projectId"
+                        value={formData.projectId ?? ""}
+                        onChange={handleChange}
+                        disabled={isFullDayAbsence}
+                        className="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white text-slate-800 border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+                    >
+                        <option value="">Bez projektu</option>
+                        {projectOptions.map(project => (
+                            <option key={project.id} value={project.id}>{project.name}</option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="notes" className="block text-sm font-medium text-slate-700">Poznámky</label>
+                    <textarea
+                      id="notes"
+                      name="notes"
+                      rows={2}
+                      value={formData.notes}
+                      onChange={handleChange}
+                      className="mt-1 block w-full rounded-md bg-white text-slate-800 border-slate-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                    ></textarea>
+                  </div>
                 </div>
-                
+
                 <div className="flex justify-between items-center pt-5 mt-5 border-t border-slate-200">
                      <button
                         type="button"
@@ -240,7 +299,14 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
                     >
                         Smazat záznam
                     </button>
-                    <div className="flex justify-end gap-3 flex-wrap">
+                    <div className="flex justify-end gap-3">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="py-2 px-4 border border-slate-300 rounded-md shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400"
+                        >
+                            Zrušit
+                        </button>
                         <button
                             type="button"
                             onClick={handleSaveAndCopyClick}

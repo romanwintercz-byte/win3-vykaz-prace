@@ -1,12 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { DayData, Project, Absence } from '@/types';
-import { DayDetailModal } from '@/components/DayDetailModal';
-import { CopyDayModal } from '@/components/CopyDayModal';
-import { timeToMinutes, calculateDuration } from '@/utils/timeUtils';
+import { WorkDay, Project, Absence } from '../types';
+import { DayEditorModal } from './DayEditorModal';
+import { CopyDayModal } from './CopyDayModal';
 
 interface DayRowProps {
     day: Date;
-    dayData: DayData;
+    dayData: WorkDay;
     projects: Project[];
     absences: Absence[];
     isHoliday: boolean;
@@ -16,44 +15,9 @@ interface DayRowProps {
 const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHoliday, onClick }) => {
     const isWeekend = day.getUTCDay() === 0 || day.getUTCDay() === 6;
     const formattedDate = day.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', timeZone: 'UTC' });
-
-    const summary = useMemo(() => {
-        if (!dayData || dayData.length === 0) {
-            return { totalHours: 0, overtime: 0, content: '-', timeRange: '' };
-        }
-        
-        const sortedEntries = [...dayData].sort((a,b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
-        const startTime = sortedEntries[0]?.startTime;
-        const endTime = sortedEntries[sortedEntries.length - 1]?.endTime;
-        const timeRange = startTime && endTime ? `${startTime} - ${endTime}` : '';
-
-        const totalWorkHours = dayData.reduce((sum, entry) => {
-            if (entry.type === 'work') {
-                return sum + calculateDuration(entry.startTime, entry.endTime);
-            }
-            return sum;
-        }, 0);
-        
-        const regularHours = Math.min(totalWorkHours, 8);
-        const overtime = Math.max(0, totalWorkHours - 8);
-
-        const contentParts = dayData.map(entry => {
-            if (entry.type === 'work') {
-                const project = projects.find(p => p.id === entry.projectId);
-                return project ? project.name : 'Práce';
-            } else if (entry.type === 'absence') {
-                const absence = absences.find(a => a.id === entry.absenceId);
-                return absence ? absence.name : 'Absence';
-            }
-            return entry.notes;
-        }).filter(Boolean);
-        
-        const content = contentParts.join(', ') || '-';
-
-        return { totalHours: regularHours, overtime, content, timeRange };
-    }, [dayData, projects, absences]);
-
-    const hasAbsence = dayData?.some(e => e.type === 'absence');
+    const project = dayData.projectId ? projects.find(p => p.id === dayData.projectId) : null;
+    const absence = dayData.absenceId ? absences.find(a => a.id === dayData.absenceId) : null;
+    const hasAbsence = !!dayData.absenceId;
 
     const rowClasses = [
         'grid grid-cols-12 gap-x-4 items-center p-2 rounded-lg cursor-pointer',
@@ -62,51 +26,50 @@ const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHol
 
     if (hasAbsence) {
         rowClasses.push('bg-yellow-50');
-    } else if (isHoliday && dayData.length === 0) {
-        rowClasses.push('bg-amber-50'); 
-    } else if (isWeekend) {
+    } else if (isHoliday && !dayData.startTime) {
+        rowClasses.push('bg-amber-50');
+    } else if (isWeekend && !dayData.startTime) {
         rowClasses.push('bg-slate-50');
     } else {
         rowClasses.push('bg-white');
     }
 
     return (
-        <div 
+        <div
             className={rowClasses.join(' ')}
             onClick={onClick}
         >
-            <div className="col-span-2 font-semibold text-slate-800">
-                {formattedDate}
+            <div className="col-span-2 font-semibold text-slate-800">{formattedDate}</div>
+            <div className="col-span-2 text-sm text-slate-500 font-mono text-center">
+                {dayData.startTime && dayData.endTime ? `${dayData.startTime} - ${dayData.endTime}`: '-'}
             </div>
-             <div className="col-span-2 text-sm text-slate-500 font-mono">
-                {summary.timeRange}
+            <div className={`col-span-2 text-sm truncate ${hasAbsence ? 'font-semibold text-yellow-800' : 'text-slate-500'}`}>
+                {absence ? `${absence.name} ${dayData.absenceAmount === 0.5 ? '(1/2)' : ''}` : '-'}
             </div>
-            <div className="col-span-6 text-sm text-slate-600 truncate" title={summary.content}>
-                {summary.content}
+            <div className="col-span-2 text-sm text-slate-500 flex items-center gap-2 truncate">
+                {project && <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }}></div>}
+                <span className="truncate">{project?.name || '-'}</span>
             </div>
-            <div className="col-span-1 text-sm text-slate-700 font-medium text-right">
-                {summary.totalHours > 0 ? `${summary.totalHours.toFixed(2)}h` : '-'}
-            </div>
-             <div className="col-span-1 text-sm text-orange-600 font-bold text-right">
-                {summary.overtime > 0 ? `${summary.overtime.toFixed(2)}h` : '-'}
-            </div>
+            <div className="col-span-2 text-sm text-slate-500 truncate">{dayData.notes || '-'}</div>
+            <div className="col-span-1 text-sm text-slate-600 text-right">{dayData.hours > 0 ? `${dayData.hours.toFixed(2)}h` : '-'}</div>
+            <div className="col-span-1 text-sm text-orange-600 font-bold text-right">{dayData.overtime > 0 ? `${dayData.overtime.toFixed(2)}h` : '-'}</div>
         </div>
     );
 }
 
 interface TimesheetViewProps {
     currentDate: Date;
-    workData: Record<string, DayData>;
+    workData: Record<string, WorkDay>;
     projects: Project[];
     absences: Absence[];
     holidays: Set<string>;
-    onSetDayData: (date: string, dayData: DayData) => void;
-    onCopyDays: (targetDates: string[], sourceData: DayData) => void;
+    onUpdateDay: (data: WorkDay) => void;
+    onUpdateMultipleDays: (data: WorkDay[]) => void;
 }
 
-export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workData, projects, absences, holidays, onSetDayData, onCopyDays }) => {
-    const [editingDate, setEditingDate] = useState<string | null>(null);
-    const [copyingDay, setCopyingDay] = useState<{ date: string, data: DayData } | null>(null);
+export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workData, projects, absences, holidays, onUpdateDay, onUpdateMultipleDays }) => {
+    const [editingDay, setEditingDay] = useState<WorkDay | null>(null);
+    const [copyingDayData, setCopyingDayData] = useState<WorkDay | null>(null);
 
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -124,38 +87,49 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
         return day.toISOString().split('T')[0];
     };
 
-    const handleSave = (date: string, data: DayData) => {
-        onSetDayData(date, data);
-        setEditingDate(null);
+    const handleSave = (data: WorkDay) => {
+        onUpdateDay(data);
+        setEditingDay(null);
     }
-    
-    const handleSaveAndCopy = (date: string, data: DayData) => {
-        onSetDayData(date, data);
-        setEditingDate(null);
-        setCopyingDay({ date, data });
+
+    const handleSaveAndCopy = (data: WorkDay) => {
+        onUpdateDay(data);
+        setEditingDay(null);
+        setCopyingDayData(data);
     };
 
-    const handlePerformCopy = (targetDates: string[], sourceData: DayData) => {
-        onCopyDays(targetDates, sourceData);
-        setCopyingDay(null);
+    const handlePerformCopy = (targetDates: string[], sourceData: WorkDay) => {
+        const daysToUpdate = targetDates.map(date => ({ ...sourceData, date }));
+        onUpdateMultipleDays(daysToUpdate);
+        setCopyingDayData(null);
     };
-
-    const editingDayData = editingDate ? workData[editingDate] || [] : [];
 
     return (
         <>
             <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
                 <div className="hidden md:grid grid-cols-12 gap-x-4 font-semibold text-slate-600 text-sm px-2 pb-3 border-b border-slate-200 mb-2">
                     <div className="col-span-2">Datum</div>
-                    <div className="col-span-2">Čas</div>
-                    <div className="col-span-6">Záznamy</div>
+                    <div className="col-span-2 text-center">Čas od-do</div>
+                    <div className="col-span-2">Absence</div>
+                    <div className="col-span-2">Projekt</div>
+                    <div className="col-span-2">Poznámky</div>
                     <div className="col-span-1 text-right">Hodiny</div>
                     <div className="col-span-1 text-right">Přesčas</div>
                 </div>
                 <div className="space-y-1">
-                     {daysInMonth.map(day => {
+                    {daysInMonth.map(day => {
                         const dateString = toDateString(day);
-                        const dataForDay = workData[dateString] || [];
+                        const dataForDay = workData[dateString] || {
+                            date: dateString,
+                            startTime: null,
+                            endTime: null,
+                            hours: 0,
+                            overtime: 0,
+                            projectId: null,
+                            absenceId: null,
+                            absenceAmount: 0,
+                            notes: ''
+                        };
                         return (
                             <DayRow 
                                 key={dateString}
@@ -164,32 +138,31 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
                                 projects={projects}
                                 absences={absences}
                                 isHoliday={holidays.has(dateString)}
-                                onClick={() => setEditingDate(dateString)} 
+                                onClick={() => setEditingDay(dataForDay)} 
                             />
                         );
                     })}
                 </div>
             </div>
 
-            {editingDate && (
-                <DayDetailModal
-                    date={editingDate}
-                    dayData={editingDayData}
+            {editingDay && (
+                <DayEditorModal 
+                    dayData={editingDay}
                     projects={projects}
                     absences={absences}
                     onSave={handleSave}
                     onSaveAndCopy={handleSaveAndCopy}
-                    onClose={() => setEditingDate(null)}
+                    onClose={() => setEditingDay(null)}
                 />
             )}
 
-            {copyingDay && (
+            {copyingDayData && (
                  <CopyDayModal
-                    sourceData={copyingDay}
+                    sourceData={copyingDayData}
                     currentDate={currentDate}
                     holidays={holidays}
                     onCopy={handlePerformCopy}
-                    onClose={() => setCopyingDay(null)}
+                    onClose={() => setCopyingDayData(null)}
                 />
             )}
         </>
