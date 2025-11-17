@@ -1,15 +1,18 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { WorkDay, Project, Absence, ProjectEntry } from '../types';
+import { WorkDay, Project, Absence } from '../types';
 import { DayEditorModal } from './DayEditorModal';
 import { CopyDayModal } from './CopyDayModal';
 
 // --- Helper Functions for Data Migration & Normalization ---
 
-// Ensures day data conforms to the new structure for backward compatibility. This is the critical fix.
+// Ensures day data conforms to the final simple structure for backward compatibility. This is the critical fix.
 const normalizeWorkDay = (dayData: any, dateString: string): WorkDay => {
     const defaultDay: WorkDay = {
         date: dateString,
-        projectEntries: [],
+        hours: 0,
+        overtime: 0,
+        projectId: null,
+        notes: '',
         absenceId: null,
         absenceHours: 0,
     };
@@ -18,45 +21,41 @@ const normalizeWorkDay = (dayData: any, dateString: string): WorkDay => {
         return defaultDay;
     }
     
-    // If it's already in the new format, just ensure sub-properties are correct and return
+    const normalized: WorkDay = { ...defaultDay, date: dateString };
+
+    // --- MIGRATION LOGIC from all previous formats ---
+
+    // 1. Migrate from the multi-project entry structure
     if (Array.isArray(dayData.projectEntries)) {
-        return {
-            ...defaultDay,
-            ...dayData,
-            projectEntries: dayData.projectEntries.map((entry: any) => ({
-                id: entry.id || `entry-${Math.random()}`,
-                projectId: entry.projectId || null,
-                hours: Number(entry.hours) || 0,
-                overtime: Number(entry.overtime) || 0,
-                notes: entry.notes || '',
-            })),
-            absenceHours: Number(dayData.absenceHours) || 0,
-        };
-    }
+        const firstEntryWithProject = dayData.projectEntries.find((e: any) => e.projectId);
+        normalized.projectId = firstEntryWithProject?.projectId || null;
+        
+        normalized.notes = dayData.projectEntries.map((e: any) => e.notes || '').filter(Boolean).join('; ');
 
-    // --- MIGRATION LOGIC from old formats ---
-    const migrated: WorkDay = { ...defaultDay };
-
-    // Migrate absence from old `absenceAmount`
-    if (dayData.hasOwnProperty('absenceAmount')) {
-        migrated.absenceHours = (Number(dayData.absenceAmount) || 0) * 8;
+        const totals = dayData.projectEntries.reduce((acc: {h: number, o: number}, entry: any) => {
+            acc.h += Number(entry.hours) || 0;
+            acc.o += Number(entry.overtime) || 0;
+            return acc;
+        }, {h: 0, o: 0});
+        normalized.hours = totals.h;
+        normalized.overtime = totals.o;
     } else {
-        migrated.absenceHours = Number(dayData.absenceHours) || 0;
-    }
-    migrated.absenceId = dayData.absenceId || null;
-
-    // Migrate old top-level hour/project entries
-    if (dayData.hours > 0 || dayData.overtime > 0 || dayData.projectId) {
-         migrated.projectEntries.push({
-            id: `migrated-${dateString}`,
-            projectId: dayData.projectId || null,
-            hours: Number(dayData.hours) || 0,
-            overtime: Number(dayData.overtime) || 0,
-            notes: dayData.notes || '',
-        });
+    // 2. Migrate from the simple key-value structure
+        normalized.hours = Number(dayData.hours) || 0;
+        normalized.overtime = Number(dayData.overtime) || 0;
+        normalized.projectId = dayData.projectId || null;
+        normalized.notes = dayData.notes || '';
     }
 
-    return migrated;
+    // 3. Migrate absence (handles both `absenceAmount` and `absenceHours`)
+    normalized.absenceId = dayData.absenceId || null;
+    if (dayData.hasOwnProperty('absenceAmount')) {
+        normalized.absenceHours = (Number(dayData.absenceAmount) || 0) * 8;
+    } else {
+        normalized.absenceHours = Number(dayData.absenceHours) || 0;
+    }
+
+    return normalized;
 };
 
 
@@ -74,15 +73,8 @@ const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHol
     const formattedDate = day.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', timeZone: 'UTC' });
     
     const absence = dayData.absenceId ? absences.find(a => a.id === dayData.absenceId) : null;
-    const hasWorkEntries = dayData.projectEntries && dayData.projectEntries.length > 0;
-    
-    const totals = useMemo(() => {
-        return dayData.projectEntries.reduce((acc, entry) => {
-            acc.hours += Number(entry.hours) || 0;
-            acc.overtime += Number(entry.overtime) || 0;
-            return acc;
-        }, { hours: 0, overtime: 0 });
-    }, [dayData.projectEntries]);
+    const project = dayData.projectId ? projects.find(p => p.id === dayData.projectId) : null;
+    const hasWork = dayData.hours > 0 || dayData.overtime > 0;
 
     const rowClasses = [
         'grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_minmax(0,5fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 items-center p-2 rounded-lg cursor-pointer',
@@ -91,19 +83,13 @@ const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHol
 
     if (dayData.absenceId) {
         rowClasses.push('bg-yellow-50/80');
-    } else if (isHoliday && !hasWorkEntries) {
+    } else if (isHoliday && !hasWork) {
         rowClasses.push('bg-amber-50/70');
-    } else if (isWeekend && !hasWorkEntries) {
+    } else if (isWeekend && !hasWork) {
         rowClasses.push('bg-slate-50');
     } else {
         rowClasses.push('bg-white');
     }
-    
-    const projectList = useMemo(() => {
-        if (!hasWorkEntries) return null;
-        const projectIds = new Set(dayData.projectEntries.map(e => e.projectId).filter(Boolean));
-        return Array.from(projectIds).map(id => projects.find(p => p.id === id));
-    }, [dayData.projectEntries, projects, hasWorkEntries]);
 
     return (
         <div className={rowClasses.join(' ')} onClick={onClick}>
@@ -113,19 +99,16 @@ const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHol
                 {absence ? `${absence.name} ${dayData.absenceHours > 0 ? `(${dayData.absenceHours}h)`: ''}` : '-'}
             </div>
             <div className="text-sm text-slate-500 flex items-center gap-2 truncate">
-                {projectList && projectList.length > 0 ? (
-                     <div className="flex items-center gap-1.5 overflow-hidden">
-                        {projectList.map(p => p && (
-                            <div key={p.id} className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded">
-                                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.color }}></div>
-                                <span className="text-xs truncate">{p.name}</span>
-                            </div>
-                        ))}
+                {project && (
+                    <div className="flex items-center gap-1.5 overflow-hidden">
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }}></div>
+                        <span className="text-xs truncate">{project.name}</span>
                     </div>
-                ) : absence ? null : '-'}
+                )}
+                {!project && !absence && '-'}
             </div>
-            <div className="text-sm text-slate-600 font-semibold text-right">{totals.hours > 0 ? `${totals.hours.toFixed(2)}h` : '-'}</div>
-            <div className="text-sm text-orange-600 font-bold text-right">{totals.overtime > 0 ? `${totals.overtime.toFixed(2)}h` : '-'}</div>
+            <div className="text-sm text-slate-600 font-semibold text-right">{dayData.hours > 0 ? `${dayData.hours.toFixed(2)}h` : '-'}</div>
+            <div className="text-sm text-orange-600 font-bold text-right">{dayData.overtime > 0 ? `${dayData.overtime.toFixed(2)}h` : '-'}</div>
         </div>
     );
 }
@@ -172,28 +155,9 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
     }, [onUpdateDay]);
 
     const handlePerformCopy = useCallback((targetDates: string[], sourceData: WorkDay) => {
-        try {
-            const daysToUpdate = targetDates.map(date => {
-                const newDayData = JSON.parse(JSON.stringify(sourceData));
-                newDayData.date = date;
-
-                if (newDayData.projectEntries && Array.isArray(newDayData.projectEntries)) {
-                    newDayData.projectEntries = newDayData.projectEntries.map((entry: ProjectEntry) => ({
-                        ...entry,
-                        id: `entry-${date}-${Math.random().toString(36).substring(2, 9)}`
-                    }));
-                }
-                
-                return newDayData;
-            });
-
-            onUpdateMultipleDays(daysToUpdate);
-            setCopyingDayData(null);
-        } catch (error) {
-            console.error("An error occurred during the copy operation:", error);
-            alert("Při kopírování dat došlo k chybě. Zkuste to prosím znovu.");
-            setCopyingDayData(null);
-        }
+        const daysToUpdate = targetDates.map(date => ({ ...sourceData, date }));
+        onUpdateMultipleDays(daysToUpdate);
+        setCopyingDayData(null);
     }, [onUpdateMultipleDays]);
 
 
@@ -203,7 +167,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
                 <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_minmax(0,5fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 font-semibold text-slate-600 text-sm px-2 pb-3 border-b border-slate-200 mb-2">
                     <div>Datum</div>
                     <div>Absence</div>
-                    <div>Projekty</div>
+                    <div>Projekt</div>
                     <div className="text-right">Hodiny</div>
                     <div className="text-right">Přesčas</div>
                 </div>

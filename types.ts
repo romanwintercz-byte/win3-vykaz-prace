@@ -16,19 +16,12 @@ export interface Employee {
   archived: boolean;
 }
 
-export interface TimeEntry {
-  id: string;
-  projectId: string | null;
-  startTime: string; // HH:mm
-  endTime: string;   // HH:mm
-  notes: string;
-}
-
 export interface WorkDay {
   date: string; // YYYY-MM-DD format
-  entries: TimeEntry[];
   hours: number;
   overtime: number;
+  projectId: string | null;
+  notes: string;
   absenceId: string | null;
   absenceHours: number; // Number of absence hours
 }

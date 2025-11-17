@@ -46,39 +46,29 @@ export const Report = React.forwardRef<HTMLDivElement, ReportProps>(({ reportDat
                         <tbody className="bg-white divide-y divide-slate-200">
                             {sortedDays.map((day: WorkDay) => {
                                 const absence = day.absenceId ? reportData.absences.find(a => a.id === day.absenceId) : null;
+                                const project = day.projectId ? reportData.projects.find(p => p.id === day.projectId) : null;
                                 const [year, month, dayNum] = day.date.split('-').map(Number);
                                 const date = new Date(Date.UTC(year, month - 1, dayNum));
                                 
-                                const projectEntries = day.projectEntries || [];
-                                
-                                const dayTotals = projectEntries.reduce((acc, entry) => {
-                                    acc.hours += Number(entry.hours) || 0;
-                                    acc.overtime += Number(entry.overtime) || 0;
-                                    return acc;
-                                }, { hours: 0, overtime: 0 });
-
-                                const projectNames = projectEntries
-                                    .map(e => reportData.projects.find(p => p.id === e.projectId)?.name)
-                                    .filter(Boolean)
-                                    .join(', ');
-                                    
-                                const notes = projectEntries.map(e => e.notes).filter(Boolean).join('; ');
+                                const hours = Number(day.hours) || 0;
+                                const overtime = Number(day.overtime) || 0;
+                                const absenceHours = Number(day.absenceHours) || 0;
 
                                 return (
                                     <tr key={day.date} className={day.absenceId ? 'bg-yellow-50/50' : ''}>
                                         <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                                             {date.toLocaleDateString('cs-CZ', { timeZone: 'UTC' })}
                                         </td>
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">{dayTotals.hours > 0 ? `${dayTotals.hours.toFixed(2)}h` : '-'}</td>
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-orange-600 font-semibold">{dayTotals.overtime > 0 ? `${dayTotals.overtime.toFixed(2)}h` : '-'}</td>
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">{projectNames || '-'}</td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">{hours > 0 ? `${hours.toFixed(2)}h` : '-'}</td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-orange-600 font-semibold">{overtime > 0 ? `${overtime.toFixed(2)}h` : '-'}</td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">{project?.name || '-'}</td>
                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">
                                             {absence ? absence.name : '-'}
                                         </td>
                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">
-                                            {day.absenceHours > 0 ? `${day.absenceHours}h` : '-'}
+                                            {absenceHours > 0 ? `${absenceHours}h` : '-'}
                                         </td>
-                                        <td className="px-4 py-4 text-sm text-slate-500 max-w-xs truncate">{notes || '-'}</td>
+                                        <td className="px-4 py-4 text-sm text-slate-500 max-w-xs truncate">{day.notes || '-'}</td>
                                     </tr>
                                 )
                             })}

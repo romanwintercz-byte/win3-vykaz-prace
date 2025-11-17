@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { WorkDay, Project, Absence, ProjectEntry } from '../types';
+import { WorkDay, Project, Absence } from '../types';
 
 interface SummaryProps {
     workData: Record<string, WorkDay>;
@@ -128,30 +128,25 @@ export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, project
         let totalAbsenceHours = 0;
 
         monthData.forEach((day: WorkDay) => {
-            if (!day.projectEntries) day.projectEntries = [];
-
-            const dayTotals = day.projectEntries.reduce((acc, entry) => {
-                acc.hours += Number(entry.hours) || 0;
-                acc.overtime += Number(entry.overtime) || 0;
-                return acc;
-            }, { hours: 0, overtime: 0 });
-
-            totalHours += dayTotals.hours;
-            totalOvertime += dayTotals.overtime;
+            const hours = Number(day.hours) || 0;
+            const overtime = Number(day.overtime) || 0;
             
-            const totalDayWork = dayTotals.hours + dayTotals.overtime;
+            totalHours += hours;
+            totalOvertime += overtime;
+            
+            const totalDayWork = hours + overtime;
             if (holidays.has(day.date) && totalDayWork > 0) {
                 totalHolidayWorkHours += totalDayWork;
             }
 
-            day.projectEntries.forEach((entry: ProjectEntry) => {
-                const projectKey = entry.projectId || 'other';
-                if (!projectHoursBreakdown[projectKey]) {
+            if (day.projectId && totalDayWork > 0) {
+                const projectKey = day.projectId;
+                 if (!projectHoursBreakdown[projectKey]) {
                     projectHoursBreakdown[projectKey] = { hours: 0, overtime: 0 };
                 }
-                projectHoursBreakdown[projectKey].hours += Number(entry.hours) || 0;
-                projectHoursBreakdown[projectKey].overtime += Number(entry.overtime) || 0;
-            });
+                projectHoursBreakdown[projectKey].hours += hours;
+                projectHoursBreakdown[projectKey].overtime += overtime;
+            }
 
             if (day.absenceId && day.absenceHours > 0 && day.absenceId !== publicHolidayAbsenceId) {
                 const absence = absences.find(a => a.id === day.absenceId);
