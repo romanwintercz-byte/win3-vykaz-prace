@@ -157,7 +157,18 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
             newEndTime = "15:30";
         } else {
             newStartTime = lastEntry.endTime || "08:00";
-            newEndTime = minutesToTime(timeToMinutes(newStartTime) + 60);
+            
+            const now = new Date();
+            const currentHours = now.getHours();
+            const currentMinutes = now.getMinutes();
+
+            // If current time is before 15:30, set end time to 15:30
+            if (currentHours < 15 || (currentHours === 15 && currentMinutes <= 30)) {
+                newEndTime = "15:30";
+            } else {
+                // Otherwise, set it to one hour after the start time
+                newEndTime = minutesToTime(timeToMinutes(newStartTime) + 60);
+            }
         }
 
         const newEntry: TimeEntry = {
