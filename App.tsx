@@ -79,6 +79,30 @@ const isDayEmpty = (day: WorkDay): boolean => {
     return day.entries.length === 0 && day.absenceId === null;
 };
 
+// Helper function to migrate old data structure for backward compatibility
+const migrateWorkData = (workData: Record<string, any>): Record<string, WorkDay> => {
+    return Object.entries(workData).reduce((acc, [date, day]) => {
+        const migratedDay = { ...day };
+        // Convert absenceAmount to absenceHours
+        if (migratedDay.hasOwnProperty('absenceAmount') && !migratedDay.hasOwnProperty('absenceHours')) {
+            migratedDay.absenceHours = (migratedDay.absenceAmount || 0) * 8;
+            delete migratedDay.absenceAmount;
+        } else if (!migratedDay.hasOwnProperty('absenceHours')) {
+            migratedDay.absenceHours = 0;
+        }
+
+        // Ensure other properties exist for forward compatibility if needed
+        if (!migratedDay.entries) migratedDay.entries = [];
+        if (migratedDay.hours === undefined) migratedDay.hours = 0;
+        if (migratedDay.overtime === undefined) migratedDay.overtime = 0;
+        if (migratedDay.absenceId === undefined) migratedDay.absenceId = null;
+        
+        acc[date] = migratedDay as WorkDay;
+        return acc;
+    }, {} as Record<string, WorkDay>);
+};
+
+
 // --- Component ---
 const initialProjects: Project[] = [
     { id: 'proj-1', name: 'Interní systém', color: '#0088FE', archived: false },
@@ -151,7 +175,7 @@ const App: React.FC = () => {
                     hours: 0,
                     overtime: 0,
                     absenceId: publicHolidayAbsenceId,
-                    absenceAmount: 1,
+                    absenceHours: 8,
                 };
             }
         });
@@ -279,7 +303,7 @@ const App: React.FC = () => {
 
     const handleImportData = (jsonString: string) => {
         try {
-            const data: FullBackup | EmployeeBackup = JSON.parse(jsonString);
+            const data: FullBackup | EmployeeBackup | any = JSON.parse(jsonString);
 
             if (data.type === 'full_backup') {
                 const backupData = data as FullBackup;
@@ -287,10 +311,18 @@ const App: React.FC = () => {
                     throw new Error("Soubor s kompletní zálohou nemá správnou strukturu.");
                 }
                 if (window.confirm("Opravdu si přejete importovat kompletní zálohu? Všechna stávající data v aplikaci budou přepsána daty ze souboru. Tuto akci nelze vrátit zpět.")) {
+                    
+                    const migratedAllWorkData: Record<string, Record<string, WorkDay>> = {};
+                    for (const empId in backupData.allWorkData) {
+                        if (Object.prototype.hasOwnProperty.call(backupData.allWorkData, empId)) {
+                            migratedAllWorkData[empId] = migrateWorkData(backupData.allWorkData[empId]);
+                        }
+                    }
+
                     setEmployees(backupData.employees);
                     setProjects(backupData.projects);
                     setAbsences(backupData.absences);
-                    setAllWorkData(backupData.allWorkData);
+                    setAllWorkData(migratedAllWorkData);
                     const firstActiveEmployee = backupData.employees.find(e => !e.archived);
                     setActiveEmployeeId(firstActiveEmployee?.id || null);
                     alert("Data byla úspěšně importována.");
@@ -304,10 +336,12 @@ const App: React.FC = () => {
                 const { employee: importedEmployee, workData: importedWorkData } = employeeData;
                 
                 const existingEmployee = employees.find(e => e.id === importedEmployee.id);
+                const migratedWorkData = migrateWorkData(importedWorkData);
+
                 if (existingEmployee) {
                     if (window.confirm(`Chystáte se importovat a sloučit data pro zaměstnance "${existingEmployee.name}". Existující záznamy pro stejné dny budou přepsány novými. Přejete si pokračovat?`)) {
                         const currentEmployeeData = allWorkData[existingEmployee.id] || {};
-                        const mergedData = { ...currentEmployeeData, ...importedWorkData };
+                        const mergedData = { ...currentEmployeeData, ...migratedWorkData };
                         setAllWorkData(prev => ({ ...prev, [existingEmployee.id]: mergedData }));
                         alert("Data zaměstnance byla úspěšně sloučena.");
                         setIsDataManagerOpen(false);
@@ -315,7 +349,7 @@ const App: React.FC = () => {
                 } else {
                     if (window.confirm(`Zaměstnanec "${importedEmployee.name}" nebyl v aplikaci nalezen. Přejete si ho založit jako nového a importovat jeho data?`)) {
                         setEmployees(prev => [...prev, importedEmployee]);
-                        setAllWorkData(prev => ({ ...prev, [importedEmployee.id]: importedWorkData }));
+                        setAllWorkData(prev => ({ ...prev, [importedEmployee.id]: migratedWorkData }));
                         setActiveEmployeeId(importedEmployee.id);
                         alert("Nový zaměstnanec byl vytvořen a data byla importována.");
                         setIsDataManagerOpen(false);
@@ -333,41 +367,43 @@ const App: React.FC = () => {
     return (
         <div className="min-h-screen bg-slate-50 font-sans text-slate-800">
             <div className="container mx-auto p-4 md:p-8">
-                <Header
-                    currentDate={currentDate}
-                    onDateChange={handleDateChange}
-                    employees={employees}
-                    activeEmployeeId={activeEmployeeId}
-                    onActiveEmployeeChange={handleActiveEmployeeChange}
-                    onToggleReport={handleToggleReport}
-                    showReport={showReport}
-                    onOpenProjectManager={() => setIsProjectManagerOpen(true)}
-                    onOpenAbsenceManager={() => setIsAbsenceManagerOpen(true)}
-                    onOpenEmployeeManager={() => setIsEmployeeManagerOpen(true)}
-                    onOpenDataManager={() => setIsDataManagerOpen(true)}
-                />
-                
-                <main className="mt-8 grid grid-cols-1 gap-8">
-                    {activeEmployeeId ? (
-                        <TimesheetView
-                            key={activeEmployeeId} // Force re-render on employee change
-                            currentDate={currentDate}
-                            workData={activeWorkData}
-                            projects={projects}
-                            absences={absences}
-                            holidays={holidaysForYear.strings}
-                            onUpdateDay={handleUpdateDay}
-                            onUpdateMultipleDays={handleUpdateMultipleDays}
-                        />
-                    ) : (
-                        <div className="text-center py-10 bg-white rounded-xl shadow-sm border border-slate-200">
-                            <h2 className="text-xl font-semibold text-slate-700">Žádný aktivní zaměstnanec</h2>
-                            <p className="text-slate-500 mt-2">Vytvořte nového zaměstnance nebo zrušte archivaci stávajícího pro zobrazení výkazu.</p>
-                        </div>
-                    )}
-                </main>
-                
-                {activeEmployeeId && <Summary workData={activeWorkData} currentDate={currentDate} projects={projects} absences={absences} holidays={holidaysForYear.strings} publicHolidayAbsenceId={publicHolidayAbsenceId} />}
+                <div className="print:hidden">
+                    <Header
+                        currentDate={currentDate}
+                        onDateChange={handleDateChange}
+                        employees={employees}
+                        activeEmployeeId={activeEmployeeId}
+                        onActiveEmployeeChange={handleActiveEmployeeChange}
+                        onToggleReport={handleToggleReport}
+                        showReport={showReport}
+                        onOpenProjectManager={() => setIsProjectManagerOpen(true)}
+                        onOpenAbsenceManager={() => setIsAbsenceManagerOpen(true)}
+                        onOpenEmployeeManager={() => setIsEmployeeManagerOpen(true)}
+                        onOpenDataManager={() => setIsDataManagerOpen(true)}
+                    />
+                    
+                    <main className="mt-8 grid grid-cols-1 gap-8">
+                        {activeEmployeeId ? (
+                            <TimesheetView
+                                key={activeEmployeeId} // Force re-render on employee change
+                                currentDate={currentDate}
+                                workData={activeWorkData}
+                                projects={projects}
+                                absences={absences}
+                                holidays={holidaysForYear.strings}
+                                onUpdateDay={handleUpdateDay}
+                                onUpdateMultipleDays={handleUpdateMultipleDays}
+                            />
+                        ) : (
+                            <div className="text-center py-10 bg-white rounded-xl shadow-sm border border-slate-200">
+                                <h2 className="text-xl font-semibold text-slate-700">Žádný aktivní zaměstnanec</h2>
+                                <p className="text-slate-500 mt-2">Vytvořte nového zaměstnance nebo zrušte archivaci stávajícího pro zobrazení výkazu.</p>
+                            </div>
+                        )}
+                    </main>
+                    
+                    {activeEmployeeId && <Summary workData={activeWorkData} currentDate={currentDate} projects={projects} absences={absences} holidays={holidaysForYear.strings} publicHolidayAbsenceId={publicHolidayAbsenceId} />}
+                </div>
 
                 {showReport && activeEmployee && (
                   <Report 
@@ -382,38 +418,40 @@ const App: React.FC = () => {
                   />
                 )}
 
-                <ProjectManager 
-                    isOpen={isProjectManagerOpen}
-                    onClose={() => setIsProjectManagerOpen(false)}
-                    projects={projects}
-                    onAddProject={handleAddProject}
-                    onUpdateProject={handleUpdateProject}
-                    onArchiveProject={handleArchiveProject}
-                />
-                <AbsenceManager 
-                    isOpen={isAbsenceManagerOpen}
-                    onClose={() => setIsAbsenceManagerOpen(false)}
-                    absences={absences}
-                    onAddAbsence={handleAddAbsence}
-                    onDeleteAbsence={handleDeleteAbsence}
-                />
-                <EmployeeManager
-                    isOpen={isEmployeeManagerOpen}
-                    onClose={() => setIsEmployeeManagerOpen(false)}
-                    employees={employees}
-                    onAddEmployee={handleAddEmployee}
-                    onUpdateEmployee={handleUpdateEmployee}
-                    onArchiveEmployee={handleArchiveEmployee}
-                />
-                <DataManager
-                  isOpen={isDataManagerOpen}
-                  onClose={() => setIsDataManagerOpen(false)}
-                  employees={employees}
-                  projects={projects}
-                  absences={absences}
-                  allWorkData={allWorkData}
-                  onImportData={handleImportData}
-                />
+                <div className="print:hidden">
+                    <ProjectManager 
+                        isOpen={isProjectManagerOpen}
+                        onClose={() => setIsProjectManagerOpen(false)}
+                        projects={projects}
+                        onAddProject={handleAddProject}
+                        onUpdateProject={handleUpdateProject}
+                        onArchiveProject={handleArchiveProject}
+                    />
+                    <AbsenceManager 
+                        isOpen={isAbsenceManagerOpen}
+                        onClose={() => setIsAbsenceManagerOpen(false)}
+                        absences={absences}
+                        onAddAbsence={handleAddAbsence}
+                        onDeleteAbsence={handleDeleteAbsence}
+                    />
+                    <EmployeeManager
+                        isOpen={isEmployeeManagerOpen}
+                        onClose={() => setIsEmployeeManagerOpen(false)}
+                        employees={employees}
+                        onAddEmployee={handleAddEmployee}
+                        onUpdateEmployee={handleUpdateEmployee}
+                        onArchiveEmployee={handleArchiveEmployee}
+                    />
+                    <DataManager
+                      isOpen={isDataManagerOpen}
+                      onClose={() => setIsDataManagerOpen(false)}
+                      employees={employees}
+                      projects={projects}
+                      absences={absences}
+                      allWorkData={allWorkData}
+                      onImportData={handleImportData}
+                    />
+                </div>
             </div>
         </div>
     );

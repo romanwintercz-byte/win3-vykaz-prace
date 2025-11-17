@@ -13,8 +13,8 @@ export const Report = React.forwardRef<HTMLDivElement, ReportProps>(({ reportDat
     const sortedDays = [...reportData.days].sort((a, b) => a.date.localeCompare(b.date));
 
     return (
-        <div ref={ref} className="mt-8 bg-white p-6 sm:p-8 rounded-xl shadow-sm border border-slate-200 print:shadow-none print:border-none print:p-0">
-            <div className="flex justify-between items-start">
+        <div ref={ref} className="report-container mt-8 bg-white p-6 sm:p-8 rounded-xl shadow-sm border border-slate-200 print:shadow-none print:border-none print:p-0">
+            <div className="report-header flex justify-between items-start">
                 <div>
                     <h2 className="text-3xl font-bold text-slate-900">Měsíční Výkaz Práce</h2>
                     <p className="text-lg text-slate-600 mt-1">{reportData.employeeName} - {reportData.month}</p>
@@ -29,9 +29,9 @@ export const Report = React.forwardRef<HTMLDivElement, ReportProps>(({ reportDat
             </div>
             
             <div className="mt-8">
-                <h3 className="text-xl font-bold text-slate-800 mb-4">Detailní záznamy</h3>
+                <h3 className="text-xl font-bold text-slate-800 mb-4 print:text-base">Detailní záznamy</h3>
                 <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-slate-200 border border-slate-200">
+                    <table className="report-table min-w-full divide-y divide-slate-200 border border-slate-200">
                         <thead className="bg-slate-50">
                             <tr>
                                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Datum</th>
@@ -41,6 +41,7 @@ export const Report = React.forwardRef<HTMLDivElement, ReportProps>(({ reportDat
                                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Přesčas</th>
                                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Projekt / Činnost</th>
                                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Absence</th>
+                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Hodin Absence</th>
                                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Poznámky</th>
                             </tr>
                         </thead>
@@ -71,7 +72,10 @@ export const Report = React.forwardRef<HTMLDivElement, ReportProps>(({ reportDat
                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-orange-600 font-semibold">{day.overtime > 0 ? `${day.overtime.toFixed(2)}h` : '-'}</td>
                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">{projectNames || '-'}</td>
                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">
-                                            {absence ? `${absence.name} ${day.absenceAmount === 0.5 ? '(1/2)' : ''}` : '-'}
+                                            {absence ? absence.name : '-'}
+                                        </td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">
+                                            {day.absenceHours > 0 ? `${day.absenceHours}h` : '-'}
                                         </td>
                                         <td className="px-4 py-4 text-sm text-slate-500 max-w-xs truncate">{notes || '-'}</td>
                                     </tr>

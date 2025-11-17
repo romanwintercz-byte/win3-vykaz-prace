@@ -47,7 +47,7 @@ const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHol
             <div className="col-span-2 font-semibold text-slate-800">{formattedDate}</div>
             <div className="col-span-2 text-sm text-slate-500 font-mono text-center">{timeRange}</div>
             <div className={`col-span-2 text-sm truncate ${dayData.absenceId ? 'font-semibold text-yellow-800' : 'text-slate-500'}`}>
-                {absence ? `${absence.name} ${dayData.absenceAmount === 0.5 ? '(1/2)' : ''}` : '-'}
+                {absence ? `${absence.name} ${dayData.absenceHours > 0 ? `(${dayData.absenceHours}h)`: ''}` : '-'}
             </div>
             <div className="col-span-4 text-sm text-slate-500 flex items-center gap-2 truncate">
                 {projectList && projectList.length > 0 ? (
@@ -134,7 +134,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
                             hours: 0,
                             overtime: 0,
                             absenceId: null,
-                            absenceAmount: 0,
+                            absenceHours: 0,
                         };
                         return (
                             <DayRow 

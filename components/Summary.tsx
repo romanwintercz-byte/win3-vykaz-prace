@@ -157,15 +157,14 @@ export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, project
                 });
             }
 
-            if (day.absenceId && day.absenceAmount > 0 && day.absenceId !== publicHolidayAbsenceId) {
+            if (day.absenceId && day.absenceHours > 0 && day.absenceId !== publicHolidayAbsenceId) {
                 const absence = absences.find(a => a.id === day.absenceId);
                 if (absence) {
-                    const absenceHours = day.absenceAmount * 8;
-                    totalAbsenceHours += absenceHours;
+                    totalAbsenceHours += day.absenceHours;
                     if (!absenceHoursBreakdown[absence.id]) {
                         absenceHoursBreakdown[absence.id] = { name: absence.name, hours: 0 };
                     }
-                    absenceHoursBreakdown[absence.id].hours += absenceHours;
+                    absenceHoursBreakdown[absence.id].hours += day.absenceHours;
                 }
             }
         });

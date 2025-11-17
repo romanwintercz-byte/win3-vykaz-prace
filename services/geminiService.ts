@@ -8,16 +8,19 @@ Shrnutí musí být v češtině.
 
 Na základě následujících dat ve formátu JSON vygeneruj souhrnný report.
 Data obsahují seznam projektů, seznam absencí a denní záznamy ('days').
-Každý denní záznam obsahuje pole 'entries', kde každý objekt reprezentuje časový úsek věnovaný jednomu projektu.
-'projectId' v 'entries' odkazuje na 'id' v seznamu 'projects'.
-'absenceId' v denních záznamech odkazuje na 'id' v seznamu 'absences'.
-Celkové odpracované hodiny ('hours') a přesčasy ('overtime') pro každý den jsou již sečteny.
+Každý denní záznam obsahuje:
+- 'entries': pole časových záznamů pro odpracované úseky. 'projectId' odkazuje na 'id' projektu.
+- 'absenceId': odkaz na 'id' absence.
+- 'absenceHours': počet hodin absence pro daný den.
+- 'hours' a 'overtime': celkové odpracované hodiny a přesčasy pro daný den, vypočtené z 'entries'.
+
+Jeden den může obsahovat jak odpracované hodiny ('entries'), tak hodiny absence ('absenceHours').
 
 Data: ${JSON.stringify(data, null, 2)}
 Ve svém shrnutí se zaměř na následující body:
 1.  Celkový počet odpracovaných hodin a přesčasů za celý měsíc.
 2.  Analýza rozložení práce mezi jednotlivé projekty/činnosti. Pro výpočet součtů za jednotlivé projekty musíš projít pole 'entries' u každého dne a sečíst časové úseky. Použij názvy projektů ze seznamu 'projects'. Uveď, které projekty byly nejvíce časově náročné.
-3.  Přehled absencí (dovolená, nemoc, atd.). Použij názvy ze seznamu 'absences'.
+3.  Přehled absencí (dovolená, nemoc, atd.) a jejich celkový součet v hodinách. Použij názvy ze seznamu 'absences' a hodnoty z 'absenceHours'.
 4.  Případné anomálie nebo zajímavé postřehy (např. vysoký počet přesčasů, koncentrace práce na jeden projekt, neobvyklé absence atd.).
 Výstup formátuj jako stručný a přehledný text. Nepoužívej Markdown. Buď věcný a profesionální.
 `;
