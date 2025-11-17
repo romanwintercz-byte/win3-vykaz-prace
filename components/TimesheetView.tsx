@@ -47,7 +47,7 @@ const normalizeWorkDay = (dayData: any, dateString: string): WorkDay => {
     if ((!Array.isArray(normalized.entries) || normalized.entries.length === 0) && (dayData.hours > 0 || dayData.overtime > 0)) {
         normalized.entries = []; // Ensure it's an array
         
-        const totalHours = dayData.hours + dayData.overtime;
+        const totalHours = (dayData.hours || 0) + (dayData.overtime || 0);
         const startTime = "08:00";
         const breakMinutes = totalHours > 4.5 ? 30 : 0;
         const totalWorkMinutes = totalHours * 60 + breakMinutes;
