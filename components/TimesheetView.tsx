@@ -109,7 +109,18 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
     };
 
     const handlePerformCopy = (targetDates: string[], sourceData: WorkDay) => {
-        const daysToUpdate = targetDates.map(date => ({ ...sourceData, date }));
+        const daysToUpdate = targetDates.map(date => {
+            // Create new unique IDs for each entry when copying to prevent reference sharing
+            const newEntries = sourceData.entries.map(entry => ({
+                ...entry,
+                id: `entry-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+            }));
+            return { 
+                ...sourceData, 
+                date, // Set the new date
+                entries: newEntries // Use the new, deep-copied entries array
+            };
+        });
         onUpdateMultipleDays(daysToUpdate);
         setCopyingDayData(null);
     };
