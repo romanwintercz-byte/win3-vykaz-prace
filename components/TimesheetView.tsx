@@ -10,9 +10,10 @@ interface DayRowProps {
     absences: Absence[];
     isHoliday: boolean;
     onClick: () => void;
+    onCopy: () => void;
 }
 
-const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHoliday, onClick }) => {
+const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHoliday, onClick, onCopy }) => {
     const isWeekend = day.getUTCDay() === 0 || day.getUTCDay() === 6;
     const formattedDate = day.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', timeZone: 'UTC' });
     
@@ -20,7 +21,7 @@ const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHol
     const hasWorkEntries = dayData.entries.length > 0;
     
     const rowClasses = [
-        'grid grid-cols-12 gap-x-4 items-center p-2 rounded-lg cursor-pointer',
+        'grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,3fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 items-center p-2 rounded-lg cursor-pointer',
         'border border-transparent hover:border-blue-400 hover:bg-blue-50 transition-all'
     ];
 
@@ -42,14 +43,19 @@ const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHol
         return Array.from(projectIds).map(id => projects.find(p => p.id === id));
     }, [dayData.entries, projects, hasWorkEntries]);
 
+    const handleCopyClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onCopy();
+    };
+
     return (
         <div className={rowClasses.join(' ')} onClick={onClick}>
-            <div className="col-span-2 font-semibold text-slate-800">{formattedDate}</div>
-            <div className="col-span-2 text-sm text-slate-500 font-mono text-center">{timeRange}</div>
-            <div className={`col-span-2 text-sm truncate ${dayData.absenceId ? 'font-semibold text-yellow-800' : 'text-slate-500'}`}>
+            <div className="font-semibold text-slate-800">{formattedDate}</div>
+            <div className="text-sm text-slate-500 font-mono text-center">{timeRange}</div>
+            <div className={`text-sm truncate ${dayData.absenceId ? 'font-semibold text-yellow-800' : 'text-slate-500'}`}>
                 {absence ? `${absence.name} ${dayData.absenceHours > 0 ? `(${dayData.absenceHours}h)`: ''}` : '-'}
             </div>
-            <div className="col-span-4 text-sm text-slate-500 flex items-center gap-2 truncate">
+            <div className="text-sm text-slate-500 flex items-center gap-2 truncate">
                 {projectList && projectList.length > 0 ? (
                      <div className="flex items-center gap-1.5 overflow-hidden">
                         {projectList.map(p => p && (
@@ -61,8 +67,19 @@ const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHol
                     </div>
                 ) : absence ? null : '-'}
             </div>
-            <div className="col-span-1 text-sm text-slate-600 font-semibold text-right">{dayData.hours > 0 ? `${dayData.hours.toFixed(2)}h` : '-'}</div>
-            <div className="col-span-1 text-sm text-orange-600 font-bold text-right">{dayData.overtime > 0 ? `${dayData.overtime.toFixed(2)}h` : '-'}</div>
+            <div className="text-sm text-slate-600 font-semibold text-right">{dayData.hours > 0 ? `${dayData.hours.toFixed(2)}h` : '-'}</div>
+            <div className="text-sm text-orange-600 font-bold text-right">{dayData.overtime > 0 ? `${dayData.overtime.toFixed(2)}h` : '-'}</div>
+            <div className="flex justify-center items-center">
+                 <button
+                    type="button"
+                    onClick={handleCopyClick}
+                    className="p-1.5 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors"
+                    aria-label="Kopírovat den"
+                    title="Kopírovat den"
+                >
+                    <CopyIcon />
+                </button>
+            </div>
         </div>
     );
 }
@@ -101,7 +118,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
         onUpdateDay(data);
         setEditingDay(null);
     }, [onUpdateDay]);
-
+    
     const handleSaveAndCopy = useCallback((data: WorkDay) => {
         onUpdateDay(data);
         setEditingDay(null);
@@ -110,7 +127,6 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
 
     const handlePerformCopy = useCallback((targetDates: string[], sourceData: WorkDay) => {
         const daysToUpdate = targetDates.map(date => {
-            // CRITICAL FIX: Generate truly unique IDs for each copied entry to prevent React key conflicts in production builds.
             const newEntries = (sourceData.entries || []).map(entry => ({
                 ...entry,
                 id: `entry-${date}-${Math.random().toString(36).substring(2, 9)}`
@@ -128,13 +144,14 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
     return (
         <>
             <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
-                <div className="hidden md:grid grid-cols-12 gap-x-4 font-semibold text-slate-600 text-sm px-2 pb-3 border-b border-slate-200 mb-2">
-                    <div className="col-span-2">Datum</div>
-                    <div className="col-span-2 text-center">Čas od-do</div>
-                    <div className="col-span-2">Absence</div>
-                    <div className="col-span-4">Projekty</div>
-                    <div className="col-span-1 text-right">Hodiny</div>
-                    <div className="col-span-1 text-right">Přesčas</div>
+                <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,3fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 font-semibold text-slate-600 text-sm px-2 pb-3 border-b border-slate-200 mb-2">
+                    <div>Datum</div>
+                    <div className="text-center">Čas od-do</div>
+                    <div>Absence</div>
+                    <div>Projekty</div>
+                    <div className="text-right">Hodiny</div>
+                    <div className="text-right">Přesčas</div>
+                    <div className="text-center">Akce</div>
                 </div>
                 <div className="space-y-1">
                     {daysInMonth.map(day => {
@@ -156,6 +173,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
                                 absences={absences}
                                 isHoliday={holidays.has(dateString)}
                                 onClick={() => setEditingDay(dataForDay)} 
+                                onCopy={() => setCopyingDayData(dataForDay)}
                             />
                         );
                     })}
@@ -168,7 +186,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
                     projects={projects}
                     absences={absences}
                     onSave={handleSave}
-                    onSaveAndCopy={handleSaveAndCopy}
+                    onSaveAndCopy={handleSaveAndCopy} // Keep for now, will be removed from modal
                     onClose={() => setEditingDay(null)}
                 />
             )}
@@ -185,3 +203,9 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
         </>
     );
 };
+
+const CopyIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+    </svg>
+);
