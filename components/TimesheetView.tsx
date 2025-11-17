@@ -1,31 +1,15 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { WorkDay, Project, Absence, TimeEntry } from '../types';
+import { WorkDay, Project, Absence, ProjectEntry } from '../types';
 import { DayEditorModal } from './DayEditorModal';
 import { CopyDayModal } from './CopyDayModal';
 
 // --- Helper Functions for Data Migration & Normalization ---
 
-const timeToMinutes = (time: string): number => {
-    if (!time || !time.includes(':')) return 0;
-    const [hours, minutes] = time.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes)) return 0;
-    return hours * 60 + minutes;
-};
-
-const minutesToTime = (minutes: number): string => {
-    if (isNaN(minutes) || minutes < 0) return "00:00";
-    const h = Math.floor(minutes / 60).toString().padStart(2, '0');
-    const m = Math.round(minutes % 60).toString().padStart(2, '0');
-    return `${h}:${m}`;
-}
-
-// Ensures day data conforms to the new structure for backward compatibility. This is a critical fix.
+// Ensures day data conforms to the new structure for backward compatibility. This is the critical fix.
 const normalizeWorkDay = (dayData: any, dateString: string): WorkDay => {
     const defaultDay: WorkDay = {
         date: dateString,
-        entries: [],
-        hours: 0,
-        overtime: 0,
+        projectEntries: [],
         absenceId: null,
         absenceHours: 0,
     };
@@ -33,50 +17,46 @@ const normalizeWorkDay = (dayData: any, dateString: string): WorkDay => {
     if (!dayData) {
         return defaultDay;
     }
-
-    let migrated = { ...dayData };
-
-    // 1. Migrate old structures if they exist
-    if (migrated.hasOwnProperty('absenceAmount')) {
-        migrated.absenceHours = (migrated.absenceAmount || 0) * 8;
-        delete migrated.absenceAmount;
+    
+    // If it's already in the new format, just ensure sub-properties are correct and return
+    if (Array.isArray(dayData.projectEntries)) {
+        return {
+            ...defaultDay,
+            ...dayData,
+            projectEntries: dayData.projectEntries.map((entry: any) => ({
+                id: entry.id || `entry-${Math.random()}`,
+                projectId: entry.projectId || null,
+                hours: Number(entry.hours) || 0,
+                overtime: Number(entry.overtime) || 0,
+                notes: entry.notes || '',
+            })),
+            absenceHours: Number(dayData.absenceHours) || 0,
+        };
     }
 
-    if ((!Array.isArray(migrated.entries) || migrated.entries.length === 0) && (migrated.hours > 0 || migrated.overtime > 0)) {
-        const totalHours = (migrated.hours || 0) + (migrated.overtime || 0);
-        const startTime = "08:00";
-        const breakMinutes = totalHours > 4.5 ? 30 : 0;
-        const totalWorkMinutes = totalHours * 60 + breakMinutes;
-        const endTimeMinutes = timeToMinutes(startTime) + totalWorkMinutes;
-        const endTime = minutesToTime(endTimeMinutes);
-        
-        migrated.entries = [{
+    // --- MIGRATION LOGIC from old formats ---
+    const migrated: WorkDay = { ...defaultDay };
+
+    // Migrate absence from old `absenceAmount`
+    if (dayData.hasOwnProperty('absenceAmount')) {
+        migrated.absenceHours = (Number(dayData.absenceAmount) || 0) * 8;
+    } else {
+        migrated.absenceHours = Number(dayData.absenceHours) || 0;
+    }
+    migrated.absenceId = dayData.absenceId || null;
+
+    // Migrate old top-level hour/project entries
+    if (dayData.hours > 0 || dayData.overtime > 0 || dayData.projectId) {
+         migrated.projectEntries.push({
             id: `migrated-${dateString}`,
-            projectId: migrated.projectId || null,
-            startTime: startTime,
-            endTime: endTime,
-            notes: migrated.notes || '',
-        }];
+            projectId: dayData.projectId || null,
+            hours: Number(dayData.hours) || 0,
+            overtime: Number(dayData.overtime) || 0,
+            notes: dayData.notes || '',
+        });
     }
 
-    // 2. Sanitize and ensure all properties are present and correctly typed.
-    // This creates a new, clean object guaranteed to match the WorkDay type.
-    const sanitized: WorkDay = {
-        date: dateString,
-        hours: Number(migrated.hours) || 0,
-        overtime: Number(migrated.overtime) || 0,
-        absenceId: migrated.absenceId || null,
-        absenceHours: Number(migrated.absenceHours) || 0,
-        entries: Array.isArray(migrated.entries) ? migrated.entries.map((entry: any) => ({
-            id: entry.id || `entry-${dateString}-${Math.random().toString(36).substring(2, 9)}`,
-            projectId: entry.projectId || null,
-            startTime: entry.startTime || "00:00",
-            endTime: entry.endTime || "00:00",
-            notes: entry.notes || "",
-        })) : [],
-    };
-
-    return sanitized;
+    return migrated;
 };
 
 
@@ -94,10 +74,18 @@ const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHol
     const formattedDate = day.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', timeZone: 'UTC' });
     
     const absence = dayData.absenceId ? absences.find(a => a.id === dayData.absenceId) : null;
-    const hasWorkEntries = dayData.entries && dayData.entries.length > 0;
+    const hasWorkEntries = dayData.projectEntries && dayData.projectEntries.length > 0;
     
+    const totals = useMemo(() => {
+        return dayData.projectEntries.reduce((acc, entry) => {
+            acc.hours += Number(entry.hours) || 0;
+            acc.overtime += Number(entry.overtime) || 0;
+            return acc;
+        }, { hours: 0, overtime: 0 });
+    }, [dayData.projectEntries]);
+
     const rowClasses = [
-        'grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,4fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 items-center p-2 rounded-lg cursor-pointer',
+        'grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_minmax(0,5fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 items-center p-2 rounded-lg cursor-pointer',
         'border border-transparent hover:border-blue-400 hover:bg-blue-50 transition-all'
     ];
 
@@ -111,18 +99,16 @@ const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHol
         rowClasses.push('bg-white');
     }
     
-    const timeRange = hasWorkEntries ? `${dayData.entries[0].startTime} - ${dayData.entries[dayData.entries.length - 1].endTime}` : '-';
-    
     const projectList = useMemo(() => {
         if (!hasWorkEntries) return null;
-        const projectIds = new Set(dayData.entries.map(e => e.projectId).filter(Boolean));
+        const projectIds = new Set(dayData.projectEntries.map(e => e.projectId).filter(Boolean));
         return Array.from(projectIds).map(id => projects.find(p => p.id === id));
-    }, [dayData.entries, projects, hasWorkEntries]);
+    }, [dayData.projectEntries, projects, hasWorkEntries]);
 
     return (
         <div className={rowClasses.join(' ')} onClick={onClick}>
             <div className="font-semibold text-slate-800">{formattedDate}</div>
-            <div className="text-sm text-slate-500 font-mono text-center">{timeRange}</div>
+            
             <div className={`text-sm truncate ${dayData.absenceId ? 'font-semibold text-yellow-800' : 'text-slate-500'}`}>
                 {absence ? `${absence.name} ${dayData.absenceHours > 0 ? `(${dayData.absenceHours}h)`: ''}` : '-'}
             </div>
@@ -138,8 +124,8 @@ const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHol
                     </div>
                 ) : absence ? null : '-'}
             </div>
-            <div className="text-sm text-slate-600 font-semibold text-right">{dayData.hours > 0 ? `${dayData.hours.toFixed(2)}h` : '-'}</div>
-            <div className="text-sm text-orange-600 font-bold text-right">{dayData.overtime > 0 ? `${dayData.overtime.toFixed(2)}h` : '-'}</div>
+            <div className="text-sm text-slate-600 font-semibold text-right">{totals.hours > 0 ? `${totals.hours.toFixed(2)}h` : '-'}</div>
+            <div className="text-sm text-orange-600 font-bold text-right">{totals.overtime > 0 ? `${totals.overtime.toFixed(2)}h` : '-'}</div>
         </div>
     );
 }
@@ -191,8 +177,8 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
                 const newDayData = JSON.parse(JSON.stringify(sourceData));
                 newDayData.date = date;
 
-                if (newDayData.entries && Array.isArray(newDayData.entries)) {
-                    newDayData.entries = newDayData.entries.map((entry: TimeEntry) => ({
+                if (newDayData.projectEntries && Array.isArray(newDayData.projectEntries)) {
+                    newDayData.projectEntries = newDayData.projectEntries.map((entry: ProjectEntry) => ({
                         ...entry,
                         id: `entry-${date}-${Math.random().toString(36).substring(2, 9)}`
                     }));
@@ -214,9 +200,8 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
     return (
         <>
             <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
-                <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,4fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 font-semibold text-slate-600 text-sm px-2 pb-3 border-b border-slate-200 mb-2">
+                <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_minmax(0,5fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 font-semibold text-slate-600 text-sm px-2 pb-3 border-b border-slate-200 mb-2">
                     <div>Datum</div>
-                    <div className="text-center">Čas od-do</div>
                     <div>Absence</div>
                     <div>Projekty</div>
                     <div className="text-right">Hodiny</div>

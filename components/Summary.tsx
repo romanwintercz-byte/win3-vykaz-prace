@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { WorkDay, Project, Absence, TimeEntry } from '../types';
+import { WorkDay, Project, Absence, ProjectEntry } from '../types';
 
 interface SummaryProps {
     workData: Record<string, WorkDay>;
@@ -110,16 +110,11 @@ const TimesheetStatus: React.FC<TimesheetStatusProps> = ({ workTimeFund, totalWo
     );
 };
 
-const timeToMinutes = (time: string): number => {
-    if (!time) return 0;
-    const [hours, minutes] = time.split(':').map(Number);
-    return hours * 60 + minutes;
-};
-
 export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, projects, absences, holidays, publicHolidayAbsenceId }) => {
     const summaryData = useMemo(() => {
         const monthData = Object.values(workData).filter(
             (d: WorkDay) => {
+                if (!d || !d.date) return false;
                 const dayDate = new Date(d.date);
                 return dayDate.getUTCMonth() === currentDate.getMonth() && dayDate.getUTCFullYear() === currentDate.getFullYear();
             }
@@ -133,38 +128,40 @@ export const Summary: React.FC<SummaryProps> = ({ workData, currentDate, project
         let totalAbsenceHours = 0;
 
         monthData.forEach((day: WorkDay) => {
-            totalHours += day.hours;
-            totalOvertime += day.overtime;
+            if (!day.projectEntries) day.projectEntries = [];
 
-            if (holidays.has(day.date) && (day.hours > 0 || day.overtime > 0)) {
-                totalHolidayWorkHours += day.hours + day.overtime;
+            const dayTotals = day.projectEntries.reduce((acc, entry) => {
+                acc.hours += Number(entry.hours) || 0;
+                acc.overtime += Number(entry.overtime) || 0;
+                return acc;
+            }, { hours: 0, overtime: 0 });
+
+            totalHours += dayTotals.hours;
+            totalOvertime += dayTotals.overtime;
+            
+            const totalDayWork = dayTotals.hours + dayTotals.overtime;
+            if (holidays.has(day.date) && totalDayWork > 0) {
+                totalHolidayWorkHours += totalDayWork;
             }
 
-            // Project breakdown calculation
-            const totalEntryDuration = day.entries.reduce((acc, entry) => acc + (timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime)), 0);
-
-            if (totalEntryDuration > 0) {
-                day.entries.forEach((entry: TimeEntry) => {
-                    const projectKey = entry.projectId || 'other';
-                    if (!projectHoursBreakdown[projectKey]) {
-                        projectHoursBreakdown[projectKey] = { hours: 0, overtime: 0 };
-                    }
-                    const entryDuration = timeToMinutes(entry.endTime) - timeToMinutes(entry.startTime);
-                    const proportion = entryDuration / totalEntryDuration;
-
-                    projectHoursBreakdown[projectKey].hours += day.hours * proportion;
-                    projectHoursBreakdown[projectKey].overtime += day.overtime * proportion;
-                });
-            }
+            day.projectEntries.forEach((entry: ProjectEntry) => {
+                const projectKey = entry.projectId || 'other';
+                if (!projectHoursBreakdown[projectKey]) {
+                    projectHoursBreakdown[projectKey] = { hours: 0, overtime: 0 };
+                }
+                projectHoursBreakdown[projectKey].hours += Number(entry.hours) || 0;
+                projectHoursBreakdown[projectKey].overtime += Number(entry.overtime) || 0;
+            });
 
             if (day.absenceId && day.absenceHours > 0 && day.absenceId !== publicHolidayAbsenceId) {
                 const absence = absences.find(a => a.id === day.absenceId);
                 if (absence) {
-                    totalAbsenceHours += day.absenceHours;
+                    const absenceHours = Number(day.absenceHours) || 0;
+                    totalAbsenceHours += absenceHours;
                     if (!absenceHoursBreakdown[absence.id]) {
                         absenceHoursBreakdown[absence.id] = { name: absence.name, hours: 0 };
                     }
-                    absenceHoursBreakdown[absence.id].hours += day.absenceHours;
+                    absenceHoursBreakdown[absence.id].hours += absenceHours;
                 }
             }
         });

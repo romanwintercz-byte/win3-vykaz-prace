@@ -35,8 +35,6 @@ export const Report = React.forwardRef<HTMLDivElement, ReportProps>(({ reportDat
                         <thead className="bg-slate-50">
                             <tr>
                                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Datum</th>
-                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Začátek</th>
-                                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Konec</th>
                                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Odprac.</th>
                                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Přesčas</th>
                                 <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Projekt / Činnost</th>
@@ -51,25 +49,28 @@ export const Report = React.forwardRef<HTMLDivElement, ReportProps>(({ reportDat
                                 const [year, month, dayNum] = day.date.split('-').map(Number);
                                 const date = new Date(Date.UTC(year, month - 1, dayNum));
                                 
-                                const projectNames = day.entries
+                                const projectEntries = day.projectEntries || [];
+                                
+                                const dayTotals = projectEntries.reduce((acc, entry) => {
+                                    acc.hours += Number(entry.hours) || 0;
+                                    acc.overtime += Number(entry.overtime) || 0;
+                                    return acc;
+                                }, { hours: 0, overtime: 0 });
+
+                                const projectNames = projectEntries
                                     .map(e => reportData.projects.find(p => p.id === e.projectId)?.name)
                                     .filter(Boolean)
                                     .join(', ');
                                     
-                                const notes = day.entries.map(e => e.notes).filter(Boolean).join('; ');
-
-                                const startTime = day.entries.length > 0 ? day.entries[0].startTime : null;
-                                const endTime = day.entries.length > 0 ? day.entries[day.entries.length - 1].endTime : null;
+                                const notes = projectEntries.map(e => e.notes).filter(Boolean).join('; ');
 
                                 return (
                                     <tr key={day.date} className={day.absenceId ? 'bg-yellow-50/50' : ''}>
                                         <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                                             {date.toLocaleDateString('cs-CZ', { timeZone: 'UTC' })}
                                         </td>
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500 font-mono">{startTime || '-'}</td>
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500 font-mono">{endTime || '-'}</td>
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">{day.hours > 0 ? `${day.hours.toFixed(2)}h` : '-'}</td>
-                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-orange-600 font-semibold">{day.overtime > 0 ? `${day.overtime.toFixed(2)}h` : '-'}</td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">{dayTotals.hours > 0 ? `${dayTotals.hours.toFixed(2)}h` : '-'}</td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-orange-600 font-semibold">{dayTotals.overtime > 0 ? `${dayTotals.overtime.toFixed(2)}h` : '-'}</td>
                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">{projectNames || '-'}</td>
                                         <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500">
                                             {absence ? absence.name : '-'}
