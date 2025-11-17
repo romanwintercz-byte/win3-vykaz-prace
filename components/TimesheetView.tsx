@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { WorkDay, Project, Absence, TimeEntry } from '../types';
 import { DayEditorModal } from './DayEditorModal';
 import { CopyDayModal } from './CopyDayModal';
@@ -97,33 +97,32 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
         return day.toISOString().split('T')[0];
     };
 
-    const handleSave = (data: WorkDay) => {
+    const handleSave = useCallback((data: WorkDay) => {
         onUpdateDay(data);
         setEditingDay(null);
-    }
+    }, [onUpdateDay]);
 
-    const handleSaveAndCopy = (data: WorkDay) => {
+    const handleSaveAndCopy = useCallback((data: WorkDay) => {
         onUpdateDay(data);
         setEditingDay(null);
         setCopyingDayData(data);
-    };
+    }, [onUpdateDay]);
 
-    const handlePerformCopy = (targetDates: string[], sourceData: WorkDay) => {
+    const handlePerformCopy = useCallback((targetDates: string[], sourceData: WorkDay) => {
         const daysToUpdate = targetDates.map(date => {
-            // Create new unique IDs for each entry when copying to prevent reference sharing
-            const newEntries = sourceData.entries.map(entry => ({
+            const newEntries = (sourceData.entries || []).map(entry => ({
                 ...entry,
                 id: `entry-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
             }));
             return { 
                 ...sourceData, 
-                date, // Set the new date
-                entries: newEntries // Use the new, deep-copied entries array
+                date,
+                entries: newEntries
             };
         });
         onUpdateMultipleDays(daysToUpdate);
         setCopyingDayData(null);
-    };
+    }, [onUpdateMultipleDays]);
 
     return (
         <>
