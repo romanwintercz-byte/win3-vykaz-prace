@@ -3,7 +3,23 @@ import { WorkDay, Project, Absence, TimeEntry } from '../types';
 import { DayEditorModal } from './DayEditorModal';
 import { CopyDayModal } from './CopyDayModal';
 
-// Helper to ensure day data conforms to the new structure for backward compatibility
+// --- Helper Functions for Data Migration & Normalization ---
+
+const timeToMinutes = (time: string): number => {
+    if (!time || !time.includes(':')) return 0;
+    const [hours, minutes] = time.split(':').map(Number);
+    if (isNaN(hours) || isNaN(minutes)) return 0;
+    return hours * 60 + minutes;
+};
+
+const minutesToTime = (minutes: number): string => {
+    if (isNaN(minutes) || minutes < 0) return "00:00";
+    const h = Math.floor(minutes / 60).toString().padStart(2, '0');
+    const m = Math.round(minutes % 60).toString().padStart(2, '0');
+    return `${h}:${m}`;
+}
+
+// Ensures day data conforms to the new structure for backward compatibility
 const normalizeWorkDay = (dayData: any, dateString: string): WorkDay => {
     const defaultDay: WorkDay = {
         date: dateString,
@@ -18,22 +34,45 @@ const normalizeWorkDay = (dayData: any, dateString: string): WorkDay => {
         return defaultDay;
     }
     
-    // Start with default, overwrite with existing data
     const normalized = { ...defaultDay, ...dayData };
 
-    // Explicitly handle migration from absenceAmount to absenceHours
+    // Migrate from 'absenceAmount' (0, 0.5, 1) to 'absenceHours'
     if (dayData.hasOwnProperty('absenceAmount')) {
         normalized.absenceHours = (dayData.absenceAmount || 0) * 8;
         delete (normalized as any).absenceAmount;
     }
     
-    // Ensure entries is always an array
-    if (!Array.isArray(normalized.entries)) {
+    // If we have hours from an old data structure but no new 'entries',
+    // create a default entry to represent that work. This is the core of the backward compatibility fix.
+    if ((!Array.isArray(normalized.entries) || normalized.entries.length === 0) && (dayData.hours > 0 || dayData.overtime > 0)) {
+        normalized.entries = []; // Ensure it's an array
+        
+        const totalHours = dayData.hours + dayData.overtime;
+        const startTime = "08:00";
+        const breakMinutes = totalHours > 4.5 ? 30 : 0;
+        const totalWorkMinutes = totalHours * 60 + breakMinutes;
+        const endTimeMinutes = timeToMinutes(startTime) + totalWorkMinutes;
+        const endTime = minutesToTime(endTimeMinutes);
+        
+        const migratedEntry: TimeEntry = {
+            id: `migrated-${dateString}`,
+            projectId: dayData.projectId || null,
+            startTime: startTime,
+            endTime: endTime,
+            notes: dayData.notes || '',
+        };
+        normalized.entries.push(migratedEntry);
+    } else if (!Array.isArray(normalized.entries)) {
         normalized.entries = [];
     }
 
+    // Clean up old top-level properties that are now in entries
+    delete (normalized as any).projectId;
+    delete (normalized as any).notes;
+
     return normalized;
 };
+
 
 interface DayRowProps {
     day: Date;
