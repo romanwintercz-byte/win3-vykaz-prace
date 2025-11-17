@@ -19,11 +19,46 @@ sans: ['Inter', 'sans-serif'],
 </script>
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
 <style>
+  @page {
+    size: A4 portrait;
+    margin: 1.5cm;
+  }
   @media print {
     body {
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
+    .report-container {
+      margin-top: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+      box-shadow: none !important;
+      width: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    .report-header h2 {
+      font-size: 22pt;
+    }
+    .report-header p {
+      font-size: 12pt;
+    }
+    .report-table {
+      font-size: 9pt;
+    }
+    .report-table th, .report-table td {
+      padding: 4px 6px;
+    }
+  }
+  /* Hide number input arrows */
+  input::-webkit-outer-spin-button,
+  input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type=number] {
+    -moz-appearance: textfield;
   }
 </style>
 <script type="importmap">
@@ -31,12 +66,8 @@ sans: ['Inter', 'sans-serif'],
   "imports": {
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "path": "https://aistudiocdn.com/path@^0.12.7",
-    "url": "https://aistudiocdn.com/url@^0.11.4",
-    "vite": "https://aistudiocdn.com/vite@^7.2.2",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1"
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1"
   }
 }
 </script>

@@ -135,7 +135,7 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
         setFormData(prev => ({
             ...prev,
             absenceId: newAbsenceId,
-            absenceHours: newAbsenceId ? 8 : 0, // Default to 8h if selected, 0 otherwise
+            absenceHours: newAbsenceId ? 1 : 0, // Default to 1h if selected, 0 otherwise
         }));
     };
     
@@ -154,8 +154,22 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
         let newEndTime: string;
 
         if (!lastEntry) { // This is the first entry
-            newStartTime = "07:00";
-            newEndTime = "15:30";
+             if (formData.absenceId && formData.absenceHours > 0) {
+                const standardStartTimeMinutes = 7 * 60; // 07:00
+                const absenceMinutes = formData.absenceHours * 60;
+                const calculatedStartTimeMinutes = standardStartTimeMinutes + absenceMinutes;
+                newStartTime = minutesToTime(calculatedStartTimeMinutes);
+
+                const standardEndTimeMinutes = 15.5 * 60; // 15:30
+                if (calculatedStartTimeMinutes < standardEndTimeMinutes) {
+                    newEndTime = "15:30";
+                } else {
+                    newEndTime = minutesToTime(calculatedStartTimeMinutes + 60);
+                }
+            } else {
+                newStartTime = "07:00";
+                newEndTime = "15:30";
+            }
         } else {
             newStartTime = lastEntry.endTime || "08:00";
             
@@ -207,7 +221,7 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
     };
 
     const handleAbsenceHoursChange = (newValue: number) => {
-        setFormData(prev => ({...prev, absenceHours: newValue}));
+        setFormData(prev => ({...prev, absenceHours: Math.max(0, newValue)}));
     }
 
     const [year, month, day] = formData.date.split('-').map(Number);
@@ -260,7 +274,7 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
                             <label htmlFor="absenceHours" className="block text-sm font-medium text-slate-700 mb-2">Počet hodin absence</label>
                             <div className="flex items-center gap-2">
                                 <div className="flex items-center justify-center bg-white border border-slate-300 rounded-md shadow-sm overflow-hidden">
-                                     <button type="button" onClick={() => handleAbsenceHoursChange(Math.max(0, formData.absenceHours - 0.25))} className="px-3 py-1 text-lg font-bold text-slate-600 hover:bg-slate-100">-</button>
+                                     <button type="button" onClick={() => handleAbsenceHoursChange(formData.absenceHours - 0.25)} className="px-3 py-1 text-lg font-bold text-slate-600 hover:bg-slate-100">-</button>
                                      <input 
                                         type="number"
                                         id="absenceHours"
@@ -268,7 +282,7 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
                                         onChange={e => handleAbsenceHoursChange(parseFloat(e.target.value) || 0)}
                                         step="0.25"
                                         min="0"
-                                        className="w-20 text-center font-mono border-x border-slate-300 focus:ring-blue-500 focus:border-blue-500"
+                                        className="w-20 text-center font-mono bg-white text-slate-800 border-x border-slate-300 focus:ring-blue-500 focus:border-blue-500"
                                      />
                                      <button type="button" onClick={() => handleAbsenceHoursChange(formData.absenceHours + 0.25)} className="px-3 py-1 text-lg font-bold text-slate-600 hover:bg-slate-100">+</button>
                                 </div>
