@@ -126,20 +126,35 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
     }, [onUpdateDay]);
 
     const handlePerformCopy = useCallback((targetDates: string[], sourceData: WorkDay) => {
-        const daysToUpdate = targetDates.map(date => {
-            const newEntries = (sourceData.entries || []).map(entry => ({
-                ...entry,
-                id: `entry-${date}-${Math.random().toString(36).substring(2, 9)}`
-            }));
-            return { 
-                ...sourceData, 
-                date,
-                entries: newEntries
-            };
-        });
-        onUpdateMultipleDays(daysToUpdate);
-        setCopyingDayData(null);
+        try {
+            const daysToUpdate = targetDates.map(date => {
+                // Perform a deep copy of the source data to prevent any reference issues,
+                // which can cause problems in production builds.
+                const newDayData = JSON.parse(JSON.stringify(sourceData));
+                
+                // Assign the new date for the copied day.
+                newDayData.date = date;
+
+                // Generate new, unique IDs for each time entry within the copied day.
+                if (newDayData.entries && Array.isArray(newDayData.entries)) {
+                    newDayData.entries = newDayData.entries.map((entry: TimeEntry) => ({
+                        ...entry,
+                        id: `entry-${date}-${Math.random().toString(36).substring(2, 9)}`
+                    }));
+                }
+                
+                return newDayData;
+            });
+
+            onUpdateMultipleDays(daysToUpdate);
+            setCopyingDayData(null);
+        } catch (error) {
+            console.error("An error occurred during the copy operation:", error);
+            alert("Při kopírování dat došlo k chybě. Zkuste to prosím znovu.");
+            setCopyingDayData(null);
+        }
     }, [onUpdateMultipleDays]);
+
 
     return (
         <>
