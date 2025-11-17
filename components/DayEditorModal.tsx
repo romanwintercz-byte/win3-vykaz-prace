@@ -10,6 +10,8 @@ interface DayEditorModalProps {
     absences: Absence[];
 }
 
+// --- Helper Functions & Components ---
+
 const timeToMinutes = (time: string): number => {
     if (!time) return 0;
     const [hours, minutes] = time.split(':').map(Number);
@@ -21,6 +23,47 @@ const minutesToTime = (minutes: number): string => {
     const m = (minutes % 60).toString().padStart(2, '0');
     return `${h}:${m}`;
 }
+
+interface TimeAdjusterProps {
+  value: string;
+  onChange: (newValue: string) => void;
+  disabled?: boolean;
+}
+
+const TimeAdjuster: React.FC<TimeAdjusterProps> = ({ value, onChange, disabled }) => {
+  const handleAdjust = (minutes: number) => {
+    if (disabled) return;
+    const newTotalMinutes = timeToMinutes(value) + minutes;
+    onChange(minutesToTime(newTotalMinutes));
+  };
+
+  return (
+    <div className="flex items-center justify-center bg-white border border-slate-300 rounded-md shadow-sm overflow-hidden data-[disabled]:bg-slate-200" data-disabled={disabled ? '' : undefined}>
+      <button 
+        type="button" 
+        onClick={() => handleAdjust(-15)} 
+        disabled={disabled}
+        className="px-2 py-1 text-lg font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+        aria-label="Odebrat 15 minut"
+      >
+        -
+      </button>
+      <span className="font-mono text-center w-16 text-slate-800 text-sm">
+        {value}
+      </span>
+      <button 
+        type="button" 
+        onClick={() => handleAdjust(15)} 
+        disabled={disabled}
+        className="px-2 py-1 text-lg font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+        aria-label="Přidat 15 minut"
+      >
+        +
+      </button>
+    </div>
+  );
+};
+
 
 export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave, onSaveAndCopy, onClose, projects, absences }) => {
     const [formData, setFormData] = useState<WorkDay>(dayData);
@@ -106,13 +149,22 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
     
     const addEntry = () => {
         const lastEntry = formData.entries[formData.entries.length - 1];
-        const newStartTime = lastEntry?.endTime || "08:00";
+        let newStartTime: string;
+        let newEndTime: string;
+
+        if (!lastEntry) { // This is the first entry
+            newStartTime = "07:00";
+            newEndTime = "15:30";
+        } else {
+            newStartTime = lastEntry.endTime || "08:00";
+            newEndTime = minutesToTime(timeToMinutes(newStartTime) + 60);
+        }
 
         const newEntry: TimeEntry = {
             id: `entry-${Date.now()}`,
             projectId: null,
             startTime: newStartTime,
-            endTime: minutesToTime(timeToMinutes(newStartTime) + 60),
+            endTime: newEndTime,
             notes: '',
         };
         setFormData(prev => ({ ...prev, entries: [...prev.entries, newEntry], absenceId: null, absenceAmount: 0 }));
@@ -160,7 +212,7 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
         >
             <form
                 onSubmit={handleSaveSubmit}
-                className="bg-white p-6 rounded-xl shadow-lg border border-slate-200 space-y-6 w-full max-w-xl transform transition-all"
+                className="bg-white p-6 rounded-xl shadow-lg border border-slate-200 space-y-6 w-full max-w-2xl transform transition-all"
                 onClick={handleModalContentClick}
             >
                 <div className="flex justify-between items-center">
@@ -209,15 +261,15 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
                     {!formData.absenceId && (
                         <div className="space-y-3 pt-2">
                             {formData.entries.map((entry, index) => (
-                                <div key={entry.id} className="grid grid-cols-12 gap-2 items-center p-2 bg-slate-50/80 rounded-lg">
-                                    <input type="time" value={entry.startTime} onChange={e => handleEntryChange(entry.id, 'startTime', e.target.value)} disabled={index > 0} className="col-span-2 mt-1 block w-full rounded-md bg-white text-slate-800 border-slate-300 shadow-sm sm:text-sm disabled:bg-slate-200" />
-                                    <input type="time" value={entry.endTime} onChange={e => handleEntryChange(entry.id, 'endTime', e.target.value)} className="col-span-2 mt-1 block w-full rounded-md bg-white text-slate-800 border-slate-300 shadow-sm sm:text-sm" />
-                                    <select value={entry.projectId ?? ""} onChange={e => handleEntryChange(entry.id, 'projectId', e.target.value)} className="col-span-4 mt-1 block w-full pl-3 pr-10 py-2 text-base bg-white text-slate-800 border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
+                                <div key={entry.id} className="grid grid-cols-[auto_auto_1fr_1fr_auto] gap-3 items-center p-2 bg-slate-50/80 rounded-lg">
+                                    <TimeAdjuster value={entry.startTime} onChange={newValue => handleEntryChange(entry.id, 'startTime', newValue)} disabled={index > 0} />
+                                    <TimeAdjuster value={entry.endTime} onChange={newValue => handleEntryChange(entry.id, 'endTime', newValue)} />
+                                    <select value={entry.projectId ?? ""} onChange={e => handleEntryChange(entry.id, 'projectId', e.target.value)} className="w-full pl-3 pr-10 py-2 text-base bg-white text-slate-800 border-slate-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md">
                                         <option value="">Bez projektu</option>
                                         {projectOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                     </select>
-                                    <input type="text" placeholder="Poznámka..." value={entry.notes} onChange={e => handleEntryChange(entry.id, 'notes', e.target.value)} className="col-span-3 mt-1 block w-full rounded-md bg-white text-slate-800 border-slate-300 shadow-sm sm:text-sm"/>
-                                    <button type="button" onClick={() => removeEntry(entry.id)} className="col-span-1 text-slate-400 hover:text-red-500 p-1 justify-self-center">
+                                    <input type="text" placeholder="Poznámka..." value={entry.notes} onChange={e => handleEntryChange(entry.id, 'notes', e.target.value)} className="w-full rounded-md bg-white text-slate-800 border-slate-300 shadow-sm sm:text-sm"/>
+                                    <button type="button" onClick={() => removeEntry(entry.id)} className="text-slate-400 hover:text-red-500 p-1 justify-self-center">
                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" /></svg>
                                     </button>
                                 </div>
