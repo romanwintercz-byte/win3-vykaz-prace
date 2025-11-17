@@ -110,9 +110,10 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
 
     const handlePerformCopy = useCallback((targetDates: string[], sourceData: WorkDay) => {
         const daysToUpdate = targetDates.map(date => {
+            // CRITICAL FIX: Generate truly unique IDs for each copied entry to prevent React key conflicts in production builds.
             const newEntries = (sourceData.entries || []).map(entry => ({
                 ...entry,
-                id: `entry-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+                id: `entry-${date}-${Math.random().toString(36).substring(2, 9)}`
             }));
             return { 
                 ...sourceData, 
