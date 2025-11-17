@@ -19,7 +19,7 @@ const minutesToTime = (minutes: number): string => {
     return `${h}:${m}`;
 }
 
-// Ensures day data conforms to the new structure for backward compatibility
+// Ensures day data conforms to the new structure for backward compatibility. This is a critical fix.
 const normalizeWorkDay = (dayData: any, dateString: string): WorkDay => {
     const defaultDay: WorkDay = {
         date: dateString,
@@ -33,44 +33,50 @@ const normalizeWorkDay = (dayData: any, dateString: string): WorkDay => {
     if (!dayData) {
         return defaultDay;
     }
-    
-    const normalized = { ...defaultDay, ...dayData };
 
-    // Migrate from 'absenceAmount' (0, 0.5, 1) to 'absenceHours'
-    if (dayData.hasOwnProperty('absenceAmount')) {
-        normalized.absenceHours = (dayData.absenceAmount || 0) * 8;
-        delete (normalized as any).absenceAmount;
+    let migrated = { ...dayData };
+
+    // 1. Migrate old structures if they exist
+    if (migrated.hasOwnProperty('absenceAmount')) {
+        migrated.absenceHours = (migrated.absenceAmount || 0) * 8;
+        delete migrated.absenceAmount;
     }
-    
-    // If we have hours from an old data structure but no new 'entries',
-    // create a default entry to represent that work. This is the core of the backward compatibility fix.
-    if ((!Array.isArray(normalized.entries) || normalized.entries.length === 0) && (dayData.hours > 0 || dayData.overtime > 0)) {
-        normalized.entries = []; // Ensure it's an array
-        
-        const totalHours = (dayData.hours || 0) + (dayData.overtime || 0);
+
+    if ((!Array.isArray(migrated.entries) || migrated.entries.length === 0) && (migrated.hours > 0 || migrated.overtime > 0)) {
+        const totalHours = (migrated.hours || 0) + (migrated.overtime || 0);
         const startTime = "08:00";
         const breakMinutes = totalHours > 4.5 ? 30 : 0;
         const totalWorkMinutes = totalHours * 60 + breakMinutes;
         const endTimeMinutes = timeToMinutes(startTime) + totalWorkMinutes;
         const endTime = minutesToTime(endTimeMinutes);
         
-        const migratedEntry: TimeEntry = {
+        migrated.entries = [{
             id: `migrated-${dateString}`,
-            projectId: dayData.projectId || null,
+            projectId: migrated.projectId || null,
             startTime: startTime,
             endTime: endTime,
-            notes: dayData.notes || '',
-        };
-        normalized.entries.push(migratedEntry);
-    } else if (!Array.isArray(normalized.entries)) {
-        normalized.entries = [];
+            notes: migrated.notes || '',
+        }];
     }
 
-    // Clean up old top-level properties that are now in entries
-    delete (normalized as any).projectId;
-    delete (normalized as any).notes;
+    // 2. Sanitize and ensure all properties are present and correctly typed.
+    // This creates a new, clean object guaranteed to match the WorkDay type.
+    const sanitized: WorkDay = {
+        date: dateString,
+        hours: Number(migrated.hours) || 0,
+        overtime: Number(migrated.overtime) || 0,
+        absenceId: migrated.absenceId || null,
+        absenceHours: Number(migrated.absenceHours) || 0,
+        entries: Array.isArray(migrated.entries) ? migrated.entries.map((entry: any) => ({
+            id: entry.id || `entry-${dateString}-${Math.random().toString(36).substring(2, 9)}`,
+            projectId: entry.projectId || null,
+            startTime: entry.startTime || "00:00",
+            endTime: entry.endTime || "00:00",
+            notes: entry.notes || "",
+        })) : [],
+    };
 
-    return normalized;
+    return sanitized;
 };
 
 
@@ -81,10 +87,9 @@ interface DayRowProps {
     absences: Absence[];
     isHoliday: boolean;
     onClick: () => void;
-    onCopy: () => void;
 }
 
-const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHoliday, onClick, onCopy }) => {
+const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHoliday, onClick }) => {
     const isWeekend = day.getUTCDay() === 0 || day.getUTCDay() === 6;
     const formattedDate = day.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', timeZone: 'UTC' });
     
@@ -92,7 +97,7 @@ const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHol
     const hasWorkEntries = dayData.entries && dayData.entries.length > 0;
     
     const rowClasses = [
-        'grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,3fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 items-center p-2 rounded-lg cursor-pointer',
+        'grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,4fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 items-center p-2 rounded-lg cursor-pointer',
         'border border-transparent hover:border-blue-400 hover:bg-blue-50 transition-all'
     ];
 
@@ -113,11 +118,6 @@ const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHol
         const projectIds = new Set(dayData.entries.map(e => e.projectId).filter(Boolean));
         return Array.from(projectIds).map(id => projects.find(p => p.id === id));
     }, [dayData.entries, projects, hasWorkEntries]);
-
-    const handleCopyClick = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        onCopy();
-    };
 
     return (
         <div className={rowClasses.join(' ')} onClick={onClick}>
@@ -140,17 +140,6 @@ const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHol
             </div>
             <div className="text-sm text-slate-600 font-semibold text-right">{dayData.hours > 0 ? `${dayData.hours.toFixed(2)}h` : '-'}</div>
             <div className="text-sm text-orange-600 font-bold text-right">{dayData.overtime > 0 ? `${dayData.overtime.toFixed(2)}h` : '-'}</div>
-            <div className="flex justify-center items-center">
-                 <button
-                    type="button"
-                    onClick={handleCopyClick}
-                    className="p-1.5 rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition-colors"
-                    aria-label="Kopírovat den"
-                    title="Kopírovat den"
-                >
-                    <CopyIcon />
-                </button>
-            </div>
         </div>
     );
 }
@@ -199,14 +188,9 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
     const handlePerformCopy = useCallback((targetDates: string[], sourceData: WorkDay) => {
         try {
             const daysToUpdate = targetDates.map(date => {
-                // Perform a deep copy of the source data to prevent any reference issues,
-                // which can cause problems in production builds.
                 const newDayData = JSON.parse(JSON.stringify(sourceData));
-                
-                // Assign the new date for the copied day.
                 newDayData.date = date;
 
-                // Generate new, unique IDs for each time entry within the copied day.
                 if (newDayData.entries && Array.isArray(newDayData.entries)) {
                     newDayData.entries = newDayData.entries.map((entry: TimeEntry) => ({
                         ...entry,
@@ -230,14 +214,13 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
     return (
         <>
             <div className="bg-white p-4 md:p-6 rounded-xl shadow-sm border border-slate-200">
-                <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,3fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 font-semibold text-slate-600 text-sm px-2 pb-3 border-b border-slate-200 mb-2">
+                <div className="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,4fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 font-semibold text-slate-600 text-sm px-2 pb-3 border-b border-slate-200 mb-2">
                     <div>Datum</div>
                     <div className="text-center">Čas od-do</div>
                     <div>Absence</div>
                     <div>Projekty</div>
                     <div className="text-right">Hodiny</div>
                     <div className="text-right">Přesčas</div>
-                    <div className="text-center">Akce</div>
                 </div>
                 <div className="space-y-1">
                     {daysInMonth.map(day => {
@@ -252,7 +235,6 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
                                 absences={absences}
                                 isHoliday={holidays.has(dateString)}
                                 onClick={() => setEditingDay(dataForDay)} 
-                                onCopy={() => setCopyingDayData(dataForDay)}
                             />
                         );
                     })}
@@ -265,7 +247,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
                     projects={projects}
                     absences={absences}
                     onSave={handleSave}
-                    onSaveAndCopy={handleSaveAndCopy} // Keep for now, will be removed from modal
+                    onSaveAndCopy={handleSaveAndCopy}
                     onClose={() => setEditingDay(null)}
                 />
             )}
@@ -282,9 +264,3 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
         </>
     );
 };
-
-const CopyIcon: React.FC = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-    </svg>
-);

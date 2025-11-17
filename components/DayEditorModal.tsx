@@ -4,7 +4,7 @@ import { WorkDay, Project, Absence, TimeEntry } from '../types';
 interface DayEditorModalProps {
     dayData: WorkDay;
     onSave: (data: WorkDay) => void;
-    onSaveAndCopy: (data: WorkDay) => void; // This prop is no longer used but kept to avoid breaking changes if not all call sites are updated
+    onSaveAndCopy: (data: WorkDay) => void;
     onClose: () => void;
     projects: Project[];
     absences: Absence[];
@@ -65,7 +65,7 @@ const TimeAdjuster: React.FC<TimeAdjusterProps> = ({ value, onChange, disabled }
 };
 
 
-export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave, onClose, projects, absences }) => {
+export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave, onSaveAndCopy, onClose, projects, absences }) => {
     const [formData, setFormData] = useState<WorkDay>(dayData);
     
     const projectOptions = useMemo(() => {
@@ -220,6 +220,10 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
         setFormData(prev => ({...prev, absenceHours: Math.max(0, newValue)}));
     }
 
+    const handleSaveAndCopyClick = () => {
+        onSaveAndCopy(formData);
+    };
+
     const [year, month, day] = formData.date.split('-').map(Number);
     const selectedDate = new Date(Date.UTC(year, month - 1, day));
     const formattedDate = selectedDate.toLocaleDateString('cs-CZ', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
@@ -339,6 +343,13 @@ export const DayEditorModal: React.FC<DayEditorModalProps> = ({ dayData, onSave,
                      <button type="button" onClick={handleDelete} className="py-2 px-4 border border-transparent rounded-md text-sm font-medium text-red-600 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">Smazat záznam</button>
                     <div className="flex justify-end gap-3">
                         <button type="button" onClick={onClose} className="py-2 px-4 border border-slate-300 rounded-md shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-400">Zrušit</button>
+                        <button
+                            type="button"
+                            onClick={handleSaveAndCopyClick}
+                            className="py-2 px-4 border border-blue-600 rounded-md shadow-sm text-sm font-medium text-blue-600 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                        >
+                            Uložit a kopírovat...
+                        </button>
                         <button type="submit" className="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Uložit změny</button>
                     </div>
                 </div>
