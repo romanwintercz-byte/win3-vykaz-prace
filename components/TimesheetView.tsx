@@ -3,6 +3,38 @@ import { WorkDay, Project, Absence, TimeEntry } from '../types';
 import { DayEditorModal } from './DayEditorModal';
 import { CopyDayModal } from './CopyDayModal';
 
+// Helper to ensure day data conforms to the new structure for backward compatibility
+const normalizeWorkDay = (dayData: any, dateString: string): WorkDay => {
+    const defaultDay: WorkDay = {
+        date: dateString,
+        entries: [],
+        hours: 0,
+        overtime: 0,
+        absenceId: null,
+        absenceHours: 0,
+    };
+
+    if (!dayData) {
+        return defaultDay;
+    }
+    
+    // Start with default, overwrite with existing data
+    const normalized = { ...defaultDay, ...dayData };
+
+    // Explicitly handle migration from absenceAmount to absenceHours
+    if (dayData.hasOwnProperty('absenceAmount')) {
+        normalized.absenceHours = (dayData.absenceAmount || 0) * 8;
+        delete (normalized as any).absenceAmount;
+    }
+    
+    // Ensure entries is always an array
+    if (!Array.isArray(normalized.entries)) {
+        normalized.entries = [];
+    }
+
+    return normalized;
+};
+
 interface DayRowProps {
     day: Date;
     dayData: WorkDay;
@@ -18,7 +50,7 @@ const DayRow: React.FC<DayRowProps> = ({ day, dayData, projects, absences, isHol
     const formattedDate = day.toLocaleDateString('cs-CZ', { weekday: 'short', day: 'numeric', timeZone: 'UTC' });
     
     const absence = dayData.absenceId ? absences.find(a => a.id === dayData.absenceId) : null;
-    const hasWorkEntries = dayData.entries.length > 0;
+    const hasWorkEntries = dayData.entries && dayData.entries.length > 0;
     
     const rowClasses = [
         'grid grid-cols-[minmax(0,2fr)_minmax(0,2fr)_minmax(0,2fr)_minmax(0,3fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-x-4 items-center p-2 rounded-lg cursor-pointer',
@@ -171,14 +203,7 @@ export const TimesheetView: React.FC<TimesheetViewProps> = ({ currentDate, workD
                 <div className="space-y-1">
                     {daysInMonth.map(day => {
                         const dateString = toDateString(day);
-                        const dataForDay = workData[dateString] || {
-                            date: dateString,
-                            entries: [],
-                            hours: 0,
-                            overtime: 0,
-                            absenceId: null,
-                            absenceHours: 0,
-                        };
+                        const dataForDay = normalizeWorkDay(workData[dateString], dateString);
                         return (
                             <DayRow 
                                 key={dateString}
